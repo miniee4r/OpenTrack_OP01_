@@ -14,17 +14,35 @@ import {
   Upload,
   ExternalLink,
   Sparkles,
-  FileText
+  FileText,
+  Scan,
+  Radio,
+  X
 } from 'lucide-react';
 
 export const BatchesView = () => {
-  const { batches, recordings, students, currentRole } = useRole();
+  const { batches, recordings, students, currentRole, simulateTurnstileCheckIn, addToast } = useRole();
   const [selectedBatchId, setSelectedBatchId] = useState('BAT-JAVA-42');
   const [activeRecordingPlayer, setActiveRecordingPlayer] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannerFeedback, setScannerFeedback] = useState(null);
 
   const activeBatch = batches.find(b => b.id === selectedBatchId) || batches[0];
   const batchStudents = students.filter(s => s.batchId === activeBatch.id);
   const batchRecordings = recordings.filter(r => r.batchId === activeBatch.id);
+
+  // Trigger real-time physical turnstile RFID / QR check-in
+  const handleTriggerTurnstileScan = (studentId, studentName) => {
+    setIsScanning(true);
+    setScannerFeedback(`Scanning Gate A Turnstile for ${studentName}...`);
+
+    setTimeout(() => {
+      setIsScanning(false);
+      simulateTurnstileCheckIn(studentId);
+      setScannerFeedback(`✅ Verified QR Check-in: ${studentName} marked PRESENT at Gate Turnstile A`);
+      setTimeout(() => setScannerFeedback(null), 3500);
+    }, 1200);
+  };
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -42,7 +60,7 @@ export const BatchesView = () => {
               </span>
             </div>
             <h1 style={{ fontSize: '1.45rem', fontWeight: '800', color: '#fff', letterSpacing: '-0.02em' }}>
-              Batches, Classroom Check-Ins & Recordings Vault
+              Batches, Real-Time Turnstile Telemetry & Recordings Vault
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
               Cross-correlate physical RFID/QR turnstile attendance with Zoom & Google Meet duration join logs.
@@ -64,6 +82,26 @@ export const BatchesView = () => {
             </select>
           </div>
         </div>
+
+        {/* Live Scanner Feedback Alert */}
+        {scannerFeedback && (
+          <div style={{
+            marginTop: '16px',
+            padding: '12px 16px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid var(--success-border)',
+            borderRadius: '10px',
+            color: '#34d399',
+            fontSize: '0.82rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'fadeIn 0.25s ease'
+          }}>
+            <Scan size={16} />
+            <span>{scannerFeedback}</span>
+          </div>
+        )}
       </div>
 
       {/* Cohort Spec Card */}
@@ -132,11 +170,11 @@ export const BatchesView = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <QrCode size={18} color="#10b981" />
               <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#fff' }}>
-                Session 26: Hybrid Check-In & Join Telemetry
+                Session 26: Turnstile Check-In & Join Telemetry
               </h3>
             </div>
             <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>
-              Live Sync
+              Hardware Turnstile Synced
             </span>
           </div>
 
@@ -158,8 +196,8 @@ export const BatchesView = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{
-                      width: '30px',
-                      height: '30px',
+                      width: '32px',
+                      height: '32px',
                       borderRadius: '50%',
                       background: isAbsent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
                       color: isAbsent ? '#f87171' : '#34d399',
@@ -176,18 +214,30 @@ export const BatchesView = () => {
                         {st.name}
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        Preferred Mode: <strong>{st.mode}</strong>
+                        Preferred Mode: <strong>{st.mode}</strong> • Attendance: <strong>{st.attendancePercentage}%</strong>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {isAbsent ? (
-                      <span className="badge badge-danger">
-                        Absent (No Scan / No Join)
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="badge badge-danger">
+                          Absent (No Scan)
+                        </span>
+                        <button
+                          onClick={() => handleTriggerTurnstileScan(st.id, st.name)}
+                          disabled={isScanning}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '3px 8px', fontSize: '0.68rem', borderColor: 'var(--success-border)', color: '#34d399' }}
+                          title="Simulate Turnstile RFID/QR Scan"
+                        >
+                          <Scan size={12} />
+                          <span>Simulate Scan</span>
+                        </button>
+                      </div>
                     ) : st.mode === 'Classroom' || st.mode === 'Hybrid' ? (
-                      <div>
+                      <div style={{ textAlign: 'right' }}>
                         <span className="badge badge-success">
                           QR Check-in: 09:28 AM
                         </span>
@@ -196,7 +246,7 @@ export const BatchesView = () => {
                         </div>
                       </div>
                     ) : (
-                      <div>
+                      <div style={{ textAlign: 'right' }}>
                         <span className="badge badge-cyan">
                           Online: 94 mins logged
                         </span>
@@ -223,7 +273,7 @@ export const BatchesView = () => {
             </div>
             <button className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem' }}>
               <Upload size={13} />
-              <span>Upload Offline Recording</span>
+              <span>Upload Video</span>
             </button>
           </div>
 
@@ -260,7 +310,7 @@ export const BatchesView = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                   <span>📅 {rec.date}</span>
                   <span>⏱️ {rec.duration}</span>
-                  <span>👁️ {rec.views} Student Views</span>
+                  <span>👁️ {rec.views} Views</span>
                   <span>💾 {rec.fileSize}</span>
                 </div>
 
@@ -276,7 +326,7 @@ export const BatchesView = () => {
                   gap: '6px'
                 }}>
                   <FileText size={14} color="#38bdf8" style={{ marginTop: '2px', flexShrink: 0 }} />
-                  <span><strong>AI Summary:</strong> {rec.transcriptSummary}</span>
+                  <span><strong>AI Key Takeaways:</strong> {rec.transcriptSummary}</span>
                 </div>
               </div>
             ))}
@@ -284,7 +334,7 @@ export const BatchesView = () => {
         </div>
       </div>
 
-      {/* Recording Player Modal Simulation */}
+      {/* Recording Player Modal */}
       {activeRecordingPlayer && (
         <div className="modal-backdrop" onClick={() => setActiveRecordingPlayer(null)}>
           <div
@@ -297,11 +347,10 @@ export const BatchesView = () => {
                 {activeRecordingPlayer.title}
               </h3>
               <button onClick={() => setActiveRecordingPlayer(null)} className="btn btn-ghost btn-sm">
-                ✕
+                <X size={18} />
               </button>
             </div>
 
-            {/* Video Player Mock */}
             <div style={{
               width: '100%',
               aspectRatio: '16/9',
@@ -348,7 +397,7 @@ export const BatchesView = () => {
                 <Play size={28} style={{ marginLeft: '4px' }} />
               </div>
               <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '12px' }}>
-                Click to stream Session 26 lecture recording with real-time transcript sync
+                Click to stream lecture recording with real-time transcript sync
               </div>
             </div>
 

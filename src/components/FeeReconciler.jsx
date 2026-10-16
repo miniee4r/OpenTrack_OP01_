@@ -11,12 +11,17 @@ import {
   Upload,
   Receipt,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Printer,
+  X,
+  FileCheck2
 } from 'lucide-react';
+import { INSTITUTE_INFO } from '../data/mockData';
 
 export const FeeReconciler = () => {
-  const { currentRole, bankStatements, reconcileStatement, students } = useRole();
+  const { currentRole, bankStatements, reconcileStatement, batchReconcileAll, students } = useRole();
   const [filterStatus, setFilterStatus] = useState('All');
+  const [activeReceipt, setActiveReceipt] = useState(null);
 
   // Hard RBAC Guard for Trainer Role
   if (!currentRole.canViewFees) {
@@ -64,6 +69,22 @@ export const FeeReconciler = () => {
 
   const totalCollected = students.reduce((acc, s) => acc + s.feePaid, 0);
   const totalPending = students.reduce((acc, s) => acc + s.feePending, 0);
+  const pendingHighMatch = bankStatements.filter(s => s.status === 'Pending Reconciliation' && s.suggestedStudentId && s.matchConfidence >= 90);
+
+  const handleOpenReceipt = (stmt) => {
+    const student = students.find(s => s.id === stmt.suggestedStudentId) || students[0];
+    setActiveReceipt({
+      receiptNo: `REC-2026-${stmt.id.replace('TXN-', '')}`,
+      studentName: student.name,
+      studentId: student.id,
+      courseName: student.courseName,
+      batchName: student.batchName,
+      amount: stmt.amount,
+      utr: stmt.utr,
+      date: stmt.timestamp,
+      phone: stmt.payerPhone,
+    });
+  };
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -88,7 +109,13 @@ export const FeeReconciler = () => {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {pendingHighMatch.length > 0 && (
+              <button onClick={batchReconcileAll} className="btn btn-success">
+                <Sparkles size={14} />
+                <span>Reconcile All High-Confidence ({pendingHighMatch.length})</span>
+              </button>
+            )}
             <button className="btn btn-secondary">
               <Upload size={14} />
               <span>Import ICICI / HDFC CSV Feed</span>
@@ -196,7 +223,7 @@ export const FeeReconciler = () => {
                 </div>
 
                 {/* Match Target & Action */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#fff' }}>
                       ₹{stmt.amount.toLocaleString('en-IN')}
@@ -215,9 +242,21 @@ export const FeeReconciler = () => {
                       <span>1-Click Reconcile</span>
                     </button>
                   ) : (
-                    <span className="badge badge-success" style={{ padding: '6px 12px' }}>
-                      ✓ Reconciled & Applied
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="badge badge-success" style={{ padding: '6px 12px' }}>
+                        ✓ Reconciled
+                      </span>
+                      {stmt.suggestedStudentId && (
+                        <button
+                          onClick={() => handleOpenReceipt(stmt)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '4px 8px', fontSize: '0.72rem' }}
+                        >
+                          <FileCheck2 size={13} />
+                          <span>Receipt</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -225,6 +264,78 @@ export const FeeReconciler = () => {
           })}
         </div>
       </div>
+
+      {/* Official Tax Receipt Modal */}
+      {activeReceipt && (
+        <div className="modal-backdrop" onClick={() => setActiveReceipt(null)}>
+          <div
+            className="modal-content animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '580px', padding: '32px', background: '#0e1422' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px', marginBottom: '20px' }}>
+              <div>
+                <span className="badge badge-purple" style={{ marginBottom: '4px' }}>
+                  TechSummit Institute Official Tax Receipt
+                </span>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#fff' }}>
+                  Receipt #{activeReceipt.receiptNo}
+                </h3>
+              </div>
+              <button onClick={() => setActiveReceipt(null)} className="btn btn-ghost btn-sm">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Payer / Student Name:</span>
+                <strong style={{ color: '#fff' }}>{activeReceipt.studentName}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Student Registration ID:</span>
+                <strong style={{ color: '#93c5fd' }}>{activeReceipt.studentId}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Enrolled Program:</span>
+                <span style={{ color: '#cbd5e1' }}>{activeReceipt.courseName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Payment Channel & UTR:</span>
+                <span style={{ color: '#34d399', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{activeReceipt.utr}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Transaction Timestamp:</span>
+                <span style={{ color: '#cbd5e1' }}>{activeReceipt.date}</span>
+              </div>
+
+              <div style={{
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid var(--success-border)',
+                borderRadius: '10px',
+                padding: '16px',
+                textAlign: 'center',
+                marginTop: '10px'
+              }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount Received & Credited</div>
+                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#34d399', marginTop: '4px' }}>
+                  ₹{activeReceipt.amount.toLocaleString('en-IN')}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Status: Credited to Student EMI Ledger • GST Compliant
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+              <button onClick={() => window.print()} className="btn btn-primary btn-sm">
+                <Printer size={14} />
+                <span>Print Official Receipt</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

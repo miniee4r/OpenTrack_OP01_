@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useMemo } from 'react';
+import confetti from 'canvas-confetti';
 import { 
   ROLES, 
   INITIAL_STUDENTS, 
@@ -28,6 +29,9 @@ export const RoleProvider = ({ children }) => {
   // Active Pending Approvals queue for the Human-in-the-Loop workflow
   const [pendingApprovals, setPendingApprovals] = useState([]);
 
+  // Toast Notifications
+  const [toasts, setToasts] = useState([]);
+
   // Copilot Drawer Open/Close State
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [copilotInitialQuery, setCopilotInitialQuery] = useState('');
@@ -37,9 +41,33 @@ export const RoleProvider = ({ children }) => {
 
   const currentRole = useMemo(() => ROLES[roleKey], [roleKey]);
 
+  const addToast = (message, type = 'info') => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const triggerConfetti = () => {
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#6366f1', '#06b6d4', '#10b981', '#f59e0b']
+      });
+    } catch (e) {
+      // safe fallback if canvas not available
+    }
+  };
+
   const switchRole = (newRoleKey) => {
     setRoleKey(newRoleKey);
-    // Log role switch to audit trail
     addAuditLog({
       action: 'ROLE_SWITCH',
       summary: `Switched operational context to ${ROLES[newRoleKey].badge}`,
@@ -47,6 +75,7 @@ export const RoleProvider = ({ children }) => {
       status: 'Context Switched',
       securityCheck: 'Verified'
     });
+    addToast(`Switched operational context to ${ROLES[newRoleKey].badge}`, 'info');
   };
 
   // Audit Logger
@@ -71,7 +100,14 @@ export const RoleProvider = ({ children }) => {
       ...actionData
     };
     setPendingApprovals(prev => [newApproval, ...prev]);
+    addToast(`New action preview queued for human authorization: ${actionData.title}`, 'warning');
     return newApproval;
+  };
+
+  // Update a pending action draft (Inline customization)
+  const updatePendingAction = (approvalId, updatedData) => {
+    setPendingApprovals(prev => prev.map(a => a.id === approvalId ? { ...a, ...updatedData } : a));
+    addToast('Action draft successfully customized', 'info');
   };
 
   // Approve a pending action
@@ -81,7 +117,6 @@ export const RoleProvider = ({ children }) => {
 
     setPendingApprovals(prev => prev.map(a => a.id === approvalId ? { ...a, status: 'APPROVED', approvedAt: new Date().toLocaleTimeString() } : a));
 
-    // Execute corresponding state modification if applicable
     if (item.type === 'WHATSAPP_DISPATCH') {
       addAuditLog({
         action: 'WHATSAPP_DISPATCH_EXECUTED',
@@ -90,6 +125,8 @@ export const RoleProvider = ({ children }) => {
         status: 'Sent via WhatsApp Gateway',
         securityCheck: 'Human Verified & Approved'
       });
+      addToast(`Dispatched WhatsApp broadcast to ${item.recipientCount} student(s)`, 'success');
+      triggerConfetti();
     } else if (item.type === 'TIMETABLE_REPLAN') {
       addAuditLog({
         action: 'TIMETABLE_REPLAN_EXECUTED',
@@ -98,6 +135,8 @@ export const RoleProvider = ({ children }) => {
         status: 'Timetable Updated',
         securityCheck: 'Clash-Free Heuristic Validated'
       });
+      addToast('Timetable schedule updated without clashes', 'success');
+      triggerConfetti();
     }
   };
 
@@ -111,6 +150,7 @@ export const RoleProvider = ({ children }) => {
       status: 'Declined',
       securityCheck: 'Operator Override'
     });
+    addToast(`Action ${approvalId} was declined`, 'danger');
   };
 
   // Reconcile UPI Statement
@@ -120,7 +160,6 @@ export const RoleProvider = ({ children }) => {
 
     setBankStatements(prev => prev.map(s => s.id === statementId ? { ...s, status: 'Reconciled' } : s));
     
-    // Update student's fee paid
     setStudents(prev => prev.map(st => {
       if (st.id === studentId) {
         const newPaid = st.feePaid + stmt.amount;
@@ -131,7 +170,7 @@ export const RoleProvider = ({ children }) => {
           feePending: newPending,
           emiStatus: newPending === 0 ? 'Paid' : 'Partially Cleared',
           nextEmiAmount: Math.min(newPending, st.nextEmiAmount),
-          dropoutRiskScore: Math.max(10, st.dropoutRiskScore - 25), // reduces risk
+          dropoutRiskScore: Math.max(10, st.dropoutRiskScore - 25),
         };
       }
       return st;
@@ -144,13 +183,64 @@ export const RoleProvider = ({ children }) => {
       status: 'Reconciled in Ledger',
       securityCheck: 'Accounts Validation Passed'
     });
+
+    addToast(`Reconciled ₹${stmt.amount.toLocaleString('en-IN')} via ${stmt.utr}`, 'success');
+    triggerConfetti();
   };
 
-  // Timetable Re-planner simulation
+  // Batch Reconcile all high-confidence transactions
+  const batchReconcileAll = () => {
+    const pendingEligible = bankStatements.filter(s => s.status === 'Pending Reconciliation' && s.suggestedStudentId && s.matchConfidence >= 90);
+    if (pendingEligible.length === 0) {
+      addToast('No high-confidence pending statements to reconcile', 'info');
+      return;
+    }
+
+    pendingEligible.forEach(stmt => {
+      reconcileStatement(stmt.id, stmt.suggestedStudentId);
+    });
+
+    addToast(`Batch reconciled ${pendingEligible.length} statement entries successfully!`, 'success');
+  };
+
+  // Simulate Live Attendance Check-In (Turnstile QR scan)
+  const simulateTurnstileCheckIn = (studentId) => {
+    const targetStudent = students.find(s => s.id === studentId);
+    if (!targetStudent) return;
+
+    setStudents(prev => prev.map(s => {
+      if (s.id === studentId) {
+        const newAttended = s.attendedClasses + 1;
+        const newMissed = Math.max(0, s.missedClasses - 1);
+        const newPct = Math.round((newAttended / s.totalClasses) * 1000) / 10;
+        return {
+          ...s,
+          attendedClasses: newAttended,
+          missedClasses: newMissed,
+          attendancePercentage: newPct,
+          classroomCheckins: s.classroomCheckins + 1,
+          dropoutRiskScore: Math.max(15, s.dropoutRiskScore - 18),
+          lastActive: 'Just now (Turnstile Gate A)',
+        };
+      }
+      return s;
+    }));
+
+    addAuditLog({
+      action: 'HYBRID_CHECKIN_QR',
+      summary: `Real-time physical turnstile QR check-in recorded for ${targetStudent.name} (Gate A)`,
+      query: `RECORD_PHYSICAL_CHECKIN(student_id='${studentId}', hardware_reader='TURNSTILE-A', timestamp=NOW())`,
+      status: 'Turnstile Verified',
+      securityCheck: 'Biometric/QR Signature Validated'
+    });
+
+    addToast(`Recorded turnstile check-in for ${targetStudent.name}`, 'success');
+  };
+
+  // Timetable Re-planner simulation for multiple scenarios
   const replanForTrainerAbsence = (trainerName, affectedDay = 'Friday') => {
-    // Substitute trainer logic
     const substitute = TRAINERS.find(t => t.name !== trainerName);
-    const affectedSlot = timetableSlots.find(s => s.trainerName === trainerName && s.day === affectedDay);
+    const affectedSlot = timetableSlots.find(s => s.trainerName.includes(trainerName) && s.day === affectedDay);
     
     if (!affectedSlot) return null;
 
@@ -178,11 +268,49 @@ export const RoleProvider = ({ children }) => {
       securityCheck: 'Hard Constraints Checked'
     });
 
+    addToast(`Re-planned schedule for ${affectedDay}: Substitute ${substitute.name} assigned`, 'success');
+
     return {
       affectedSlot,
       substitute,
       explanation
     };
+  };
+
+  // Room Overhaul Re-Planner Scenario
+  const replanForRoomMaintenance = (originalRoomId = 'RM-101', targetRoomId = 'RM-SEM', day = 'Thursday') => {
+    const origRoom = ROOMS.find(r => r.id === originalRoomId);
+    const targetRoom = ROOMS.find(r => r.id === targetRoomId);
+
+    const updatedSlots = timetableSlots.map(s => {
+      if (s.roomId === originalRoomId && s.day === day) {
+        return {
+          ...s,
+          roomId: targetRoomId,
+          roomName: `${targetRoom.name} (Relocated)`,
+          roomCapacity: targetRoom.capacity,
+          status: 'Re-Planned (Room Relocation)',
+          replanNote: `Relocated from ${origRoom.name} due to amphitheater maintenance. Capacity ${targetRoom.capacity} verified.`
+        };
+      }
+      return s;
+    });
+
+    setTimetableSlots(updatedSlots);
+
+    const explanation = `Relocated sessions from ${origRoom.name} to ${targetRoom.name} on ${day}. Seating capacity (${targetRoom.capacity}) satisfies batch size. No overlapping bookings.`;
+
+    addAuditLog({
+      action: 'ROOM_RELOCATION_REPLAN',
+      summary: explanation,
+      query: `RELOCATE_ROOM(from='${originalRoomId}', to='${targetRoomId}', day='${day}')`,
+      status: 'Relocated in 14ms',
+      securityCheck: 'Capacity Constraint Satisfied'
+    });
+
+    addToast(`Relocated ${day} slots to ${targetRoom.name}`, 'info');
+
+    return { explanation };
   };
 
   // Strict RBAC Query Validator for AI Copilot
@@ -215,14 +343,17 @@ export const RoleProvider = ({ children }) => {
         currentRole,
         switchRole,
         students,
+        setStudents,
         batches: BATCHES,
         trainers: TRAINERS,
         courses: COURSES,
         rooms: ROOMS,
         recordings,
         timetableSlots,
+        setTimetableSlots,
         auditLogs,
         bankStatements,
+        setBankStatements,
         pendingApprovals,
         isCopilotOpen,
         setIsCopilotOpen,
@@ -232,11 +363,19 @@ export const RoleProvider = ({ children }) => {
         setSelectedCampus,
         addAuditLog,
         queueHumanApproval,
+        updatePendingAction,
         approveAction,
         rejectAction,
         reconcileStatement,
+        batchReconcileAll,
+        simulateTurnstileCheckIn,
         replanForTrainerAbsence,
+        replanForRoomMaintenance,
         validateQuerySecurity,
+        triggerConfetti,
+        toasts,
+        addToast,
+        removeToast,
       }}
     >
       {children}

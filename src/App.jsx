@@ -11,12 +11,12 @@ import { FeeReconciler } from './components/FeeReconciler';
 import { RiskEngine } from './components/RiskEngine';
 import { CertificateBuilder } from './components/CertificateBuilder';
 import { AuditLogView } from './components/AuditLogView';
-import { Sparkles, Bot, X } from 'lucide-react';
+import { Sparkles, Bot, X, CheckCircle2, AlertTriangle, Info, AlertOctagon } from 'lucide-react';
 
 const AppContent = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [certStudent, setCertStudent] = useState(null);
-  const { isCopilotOpen, setIsCopilotOpen } = useRole();
+  const { isCopilotOpen, setIsCopilotOpen, toasts, removeToast } = useRole();
 
   // Keyboard shortcut: Ctrl+K / Cmd+K toggles Copilot
   useEffect(() => {
@@ -97,6 +97,73 @@ const AppContent = () => {
           >
             <AICopilot isDrawer={true} onClose={() => setIsCopilotOpen(false)} />
           </div>
+        </div>
+      )}
+
+      {/* Real-Time Toast Notifications Stack (Bottom-Right) */}
+      {toasts.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          zIndex: 9999,
+          maxWidth: '420px',
+        }}>
+          {toasts.map(toast => {
+            const isSuccess = toast.type === 'success';
+            const isDanger = toast.type === 'danger';
+            const isWarning = toast.type === 'warning';
+
+            return (
+              <div
+                key={toast.id}
+                className="animate-slide-up"
+                style={{
+                  background: isSuccess 
+                    ? 'rgba(16, 185, 129, 0.95)' 
+                    : isDanger 
+                      ? 'rgba(239, 68, 68, 0.95)' 
+                      : isWarning 
+                        ? 'rgba(245, 158, 11, 0.95)' 
+                        : 'rgba(30, 41, 59, 0.95)',
+                  backdropFilter: 'blur(12px)',
+                  color: '#fff',
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  fontSize: '0.84rem',
+                  fontWeight: '500',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isSuccess ? <CheckCircle2 size={16} /> : isDanger ? <AlertOctagon size={16} /> : isWarning ? <AlertTriangle size={16} /> : <Info size={16} />}
+                  <span>{toast.message}</span>
+                </div>
+                <button
+                  onClick={() => removeToast(toast.id)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.8)',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

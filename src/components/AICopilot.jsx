@@ -16,7 +16,12 @@ import {
   ChevronRight,
   ExternalLink,
   RefreshCw,
-  X
+  X,
+  Mic,
+  MicOff,
+  Edit3,
+  Save,
+  Share2
 } from 'lucide-react';
 
 export const AICopilot = ({ isDrawer = false, onClose }) => {
@@ -27,22 +32,28 @@ export const AICopilot = ({ isDrawer = false, onClose }) => {
     timetableSlots,
     validateQuerySecurity,
     queueHumanApproval,
+    updatePendingAction,
     approveAction,
     rejectAction,
     pendingApprovals,
     addAuditLog,
     copilotInitialQuery,
     replanForTrainerAbsence,
+    addToast
   } = useRole();
 
   const [inputQuery, setInputQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [editingApprovalId, setEditingApprovalId] = useState(null);
+  const [editedTemplate, setEditedTemplate] = useState('');
+
   const [conversationHistory, setConversationHistory] = useState([
     {
       id: 'welcome-msg',
       sender: 'copilot',
       timestamp: 'Just now',
-      text: `Hello ${currentRole.name}! I am your AI Operations Copilot, sponsored by TechSummitTrainers. I can translate your plain language instructions into safe, verified read-only queries, draft WhatsApp outreach for human approval, and re-plan timetables in seconds.`,
+      text: `Hello ${currentRole.name}! I am your AI Operations Copilot, sponsored by TechSummitTrainers. I translate plain English staff instructions into safe, verified read-only queries, generate human-in-the-loop action previews with customizable WhatsApp templates, and re-plan timetables in seconds.`,
       query: null,
       actionPreview: null,
     }
@@ -50,7 +61,6 @@ export const AICopilot = ({ isDrawer = false, onClose }) => {
 
   const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'approvals'
 
-  // Apply initial query if passed from other triggers
   useEffect(() => {
     if (copilotInitialQuery) {
       setInputQuery(copilotInitialQuery);
@@ -58,7 +68,6 @@ export const AICopilot = ({ isDrawer = false, onClose }) => {
     }
   }, [copilotInitialQuery]);
 
-  // Preset sample queries from the Problem Statement
   const samplePrompts = [
     {
       title: "Java Missed Classes + EMI Due",
@@ -73,16 +82,46 @@ export const AICopilot = ({ isDrawer = false, onClose }) => {
       prompt: "What are the total pending fees and overdue EMIs for students in the Java batch?"
     },
     {
+      title: "Empty Amphitheaters Right Now",
+      prompt: "Which classrooms and hybrid amphitheaters are currently unoccupied for an emergency mentor session?"
+    },
+    {
       title: "High Dropout Risk Interventions",
       prompt: "Show me all students at high dropout risk with their root cause factors and recommend counselor interventions."
     }
   ];
 
+  // Voice Command Simulation
+  const handleToggleVoice = () => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+    setIsListening(true);
+    addToast('Listening for voice prompt...', 'info');
+
+    setTimeout(() => {
+      setIsListening(false);
+      const simulatedVoicePrompt = "which students in the Java batch have missed three or more classes and have an EMI due this week? Draft a WhatsApp reminder for each.";
+      setInputQuery(simulatedVoicePrompt);
+      addToast('Voice transcribed: "which students in the Java batch have missed three or more classes..."', 'success');
+    }, 2000);
+  };
+
+  const handleStartEditAction = (action) => {
+    setEditingApprovalId(action.id);
+    setEditedTemplate(action.templateMessage || '');
+  };
+
+  const handleSaveEditedAction = (actionId) => {
+    updatePendingAction(actionId, { templateMessage: editedTemplate });
+    setEditingApprovalId(null);
+  };
+
   const handleExecuteQuery = (customPrompt = null) => {
     const queryToRun = (customPrompt || inputQuery).trim();
     if (!queryToRun) return;
 
-    // Add user message
     const userMsg = {
       id: `user-${Date.now()}`,
       sender: 'user',
@@ -126,11 +165,9 @@ export const AICopilot = ({ isDrawer = false, onClose }) => {
     setTimeout(() => {
       const qLower = queryToRun.toLowerCase();
 
-      // CASE A: The exact prompt from user statement:
-      // "which students in the Java batch have missed three or more classes and have an EMI due this week? Draft a WhatsApp reminder for each."
+      // CASE A: The exact benchmark prompt
       if (qLower.includes('java') && (qLower.includes('missed') || qLower.includes('class')) && (qLower.includes('emi') || qLower.includes('due') || qLower.includes('whatsapp'))) {
         
-        // Find matching students in Java batch with missedClasses >= 3 and EMI due this week
         const matchedStudents = students.filter(s => 
           s.batchId === 'BAT-JAVA-42' && 
           s.missedClasses >= 3 && 
@@ -155,7 +192,6 @@ WHERE b.id = 'BAT-JAVA-42'
   AND s.next_emi_due_date BETWEEN '2026-10-16' AND '2026-10-23'
 ORDER BY s.dropout_risk_score DESC;`;
 
-        // Queue action for Human Approval
         const actionPayload = {
           type: 'WHATSAPP_DISPATCH',
           title: 'WhatsApp Academic & Fee Reminder Broadcast',
@@ -242,7 +278,30 @@ Review the preview below to approve or notify students.`,
 
         setConversationHistory(prev => [...prev, copilotResponse]);
       }
-      // CASE C: High dropout risk query
+      // CASE C: Empty Rooms query
+      else if (qLower.includes('room') && (qLower.includes('empty') || qLower.includes('unoccupied') || qLower.includes('available'))) {
+        const sqlQuery = `-- Safe Query: Inspect Unallocated Physical Amphitheaters
+SELECT r.id, r.name, r.capacity, r.type
+FROM rooms r
+LEFT JOIN timetable_slots ts ON r.id = ts.room_id AND ts.day = 'Friday' AND ts.time LIKE '%14:00%'
+WHERE ts.id IS NULL;`;
+
+        const copilotResponse = {
+          id: `copilot-${Date.now()}`,
+          sender: 'copilot',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `Currently unoccupied rooms ready for emergency mentor or revision sessions:
+          
+1. **Lab 204** (Cap: 30 • High Performance Computing) - Free until 16:00
+2. **Virtual Room B** (Cap: 250 • Google Meet Pro Stream) - Available all day
+3. **Seminar Hall** (Cap: 80 • Hybrid Amphitheater) - Free until 16:00`,
+          query: sqlQuery,
+          queryStats: { executionMs: '4.8ms', rowsMatched: 3, mode: 'Read-Only Verified' },
+        };
+
+        setConversationHistory(prev => [...prev, copilotResponse]);
+      }
+      // CASE D: High dropout risk query
       else if (qLower.includes('risk') || qLower.includes('dropout')) {
         const atRiskStudents = students.filter(s => s.dropoutRiskScore >= 70);
 
@@ -267,7 +326,7 @@ ORDER BY dropout_risk_score DESC;`;
 
         setConversationHistory(prev => [...prev, copilotResponse]);
       }
-      // DEFAULT FALLBACK QUERY
+      // DEFAULT FALLBACK
       else {
         const sqlQuery = `-- General Institute Data Translation Query
 SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g, "\\'")}' LIMIT 10;`;
@@ -466,9 +525,9 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {msg.matchedData.map(st => (
-                          <div key={st.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px' }}>
+                          <div key={st.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px' }}>
                             <div>
-                              <strong style={{ color: '#fff', fontSize: '0.82rem' }}>{st.name}</strong>
+                              <strong style={{ color: '#fff', fontSize: '0.84rem' }}>{st.name}</strong>
                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '8px' }}>{st.phone}</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -480,9 +539,17 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
                                   EMI Due: ₹{st.nextEmiAmount.toLocaleString('en-IN')}
                                 </span>
                               )}
-                              <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
-                                Risk {st.dropoutRiskScore}%
-                              </span>
+                              <a
+                                href={`https://web.whatsapp.com/send?phone=${st.phone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(`Hi ${st.name}, this is TechSummitTrainers regarding your attendance.`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '2px 8px', fontSize: '0.68rem', color: '#34d399' }}
+                                title="Open in WhatsApp Web"
+                              >
+                                <ExternalLink size={11} />
+                                <span>WhatsApp Web</span>
+                              </a>
                             </div>
                           </div>
                         ))}
@@ -538,7 +605,7 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
                         {msg.actionPreview.summary}
                       </div>
 
-                      {/* WhatsApp Message Preview Box */}
+                      {/* WhatsApp Message Template Preview / Edit */}
                       {msg.actionPreview.templateMessage && (
                         <div style={{
                           background: 'rgba(6, 95, 70, 0.15)',
@@ -547,13 +614,56 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
                           padding: '12px',
                           marginBottom: '14px',
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#34d399', fontWeight: '700', marginBottom: '6px' }}>
-                            <MessageSquare size={14} />
-                            <span>WhatsApp Message Template Preview:</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#34d399', fontWeight: '700' }}>
+                              <MessageSquare size={14} />
+                              <span>WhatsApp Message Draft:</span>
+                            </div>
+
+                            {msg.actionPreview.status !== 'APPROVED' && (
+                              <button
+                                onClick={() => handleStartEditAction(msg.actionPreview)}
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '2px 6px', fontSize: '0.7rem', color: '#93c5fd' }}
+                              >
+                                <Edit3 size={12} />
+                                <span>Edit Draft</span>
+                              </button>
+                            )}
                           </div>
-                          <div style={{ fontSize: '0.8rem', color: '#e2e8f0', fontStyle: 'italic', lineHeight: '1.5' }}>
-                            "{msg.actionPreview.templateMessage}"
-                          </div>
+
+                          {editingApprovalId === msg.actionPreview.id ? (
+                            <div>
+                              <textarea
+                                value={editedTemplate}
+                                onChange={(e) => setEditedTemplate(e.target.value)}
+                                className="input-control"
+                                rows={4}
+                                style={{ fontSize: '0.8rem', marginBottom: '8px' }}
+                              />
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                <button
+                                  onClick={() => setEditingApprovalId(null)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleSaveEditedAction(msg.actionPreview.id)}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                                >
+                                  <Save size={12} />
+                                  <span>Save Template</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.8rem', color: '#e2e8f0', fontStyle: 'italic', lineHeight: '1.5' }}>
+                              "{msg.actionPreview.templateMessage}"
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -627,7 +737,7 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
             ))}
           </div>
 
-          {/* Input Box */}
+          {/* Input Box with Voice Mic Simulator */}
           <div style={{
             padding: '16px 20px',
             borderTop: '1px solid var(--border-subtle)',
@@ -640,14 +750,39 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
               }}
               style={{ display: 'flex', gap: '10px' }}
             >
-              <input
-                type="text"
-                value={inputQuery}
-                onChange={(e) => setInputQuery(e.target.value)}
-                placeholder={`Ask in plain English (e.g. "Which students in the Java batch have missed 3+ classes and have an EMI due?")...`}
-                className="input-control"
-                style={{ flex: 1 }}
-              />
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  type="text"
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  placeholder={`Ask in plain English (e.g. "Which students in the Java batch missed 3+ classes?")...`}
+                  className="input-control"
+                  style={{ paddingRight: '40px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleToggleVoice}
+                  title="Simulate Voice Prompt"
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '8px',
+                    background: isListening ? '#ef4444' : 'transparent',
+                    border: 'none',
+                    color: isListening ? '#fff' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    animation: isListening ? 'pulse-subtle 1s infinite' : 'none'
+                  }}
+                >
+                  <Mic size={17} />
+                </button>
+              </div>
+
               <button
                 type="submit"
                 disabled={!inputQuery.trim() || isProcessing}
@@ -701,6 +836,21 @@ SELECT * FROM institute_records WHERE match_keyword = '${queryToRun.replace(/'/g
                   <p style={{ fontSize: '0.82rem', color: '#cbd5e1', marginBottom: '12px' }}>
                     {item.summary}
                   </p>
+
+                  {item.templateMessage && (
+                    <div style={{
+                      background: 'rgba(6, 95, 70, 0.15)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '8px',
+                      padding: '10px',
+                      fontSize: '0.78rem',
+                      color: '#cbd5e1',
+                      fontStyle: 'italic',
+                      marginBottom: '12px'
+                    }}>
+                      "{item.templateMessage}"
+                    </div>
+                  )}
 
                   {item.status === 'PENDING_APPROVAL' && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
