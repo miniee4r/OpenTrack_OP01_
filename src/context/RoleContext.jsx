@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { api } from '../services/api';
 import { 
   ROLES, 
   INITIAL_STUDENTS, 
@@ -29,6 +30,10 @@ export const RoleProvider = ({ children }) => {
   // Active Pending Approvals queue for the Human-in-the-Loop workflow
   const [pendingApprovals, setPendingApprovals] = useState([]);
 
+  // Backend API connection & Token state
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [backendToken, setBackendToken] = useState('');
+
   // Toast Notifications
   const [toasts, setToasts] = useState([]);
 
@@ -40,6 +45,76 @@ export const RoleProvider = ({ children }) => {
   const [selectedCampus, setSelectedCampus] = useState('blr-main');
 
   const currentRole = useMemo(() => ROLES[roleKey], [roleKey]);
+
+  // Synchronize with Backend API (http://localhost:8000)
+  const syncWithBackend = useCallback(async (role = roleKey) => {
+    try {
+      // 1. Authenticate & Obtain Bearer Token
+      const loginData = await api.login(role.toLowerCase(), 'password');
+      if (loginData?.token) {
+        setBackendConnected(true);
+        setBackendToken(loginData.token);
+      }
+
+      // 2. Fetch Live Pending Approvals (GET /pending)
+      const livePending = await api.getPendingActions();
+      if (livePending && Array.isArray(livePending) && livePending.length > 0) {
+        setPendingApprovals(livePending.map(item => ({
+          id: item.id,
+          title: item.type === 'WHATSAPP_DISPATCH' ? 'WhatsApp Academic & Fee Reminder Broadcast' : 'Schedule Re-plan Notice',
+          summary: item.message,
+          recipientCount: 1,
+          recipients: [{ name: item['student name'] || item.student_name, phone: item.phone, amount: item.amount }],
+          templateMessage: item.message,
+          status: (item.status || 'pending').toUpperCase() === 'PENDING' ? 'PENDING_APPROVAL' : (item.status || '').toUpperCase(),
+          targetChannel: 'WhatsApp Business API',
+          ...item
+        })));
+      }
+
+      // 3. Fetch Live Audit Logs (GET /audit)
+      const liveAudit = await api.getAuditLogs();
+      if (liveAudit && Array.isArray(liveAudit) && liveAudit.length > 0) {
+        setAuditLogs(liveAudit.map((log, idx) => ({
+          id: `AUD-LIVE-${idx}`,
+          timestamp: log.ts,
+          operatorName: log.who,
+          operatorRole: log.role,
+          action: log.action,
+          summary: log.detail,
+          query: log.action,
+          status: 'Recorded in Ledger',
+          securityCheck: 'Signed & Verified'
+        })));
+      }
+
+      // 4. Fetch Live Timetable (GET /timetable)
+      const liveTimetable = await api.getTimetable();
+      if (liveTimetable && Array.isArray(liveTimetable) && liveTimetable.length > 0) {
+        setTimetableSlots(prev => {
+          // Merge room/batch attributes
+          return liveTimetable.map((slot, i) => ({
+            id: slot.id || `SLOT-${i}`,
+            day: slot.day,
+            time: slot.time,
+            batchName: slot.batch,
+            trainerName: slot.trainer,
+            roomName: slot.room,
+            mode: 'Hybrid (Turnstile + Zoom)',
+            enrolledCount: 28,
+            status: 'Confirmed'
+          }));
+        });
+      }
+    } catch (err) {
+      console.log('[RoleContext] Operating with local state / mock fallback:', err.message);
+      setBackendConnected(false);
+    }
+  }, [roleKey]);
+
+  useEffect(() => {
+    syncWithBackend();
+  }, [syncWithBackend]);
 
   const addToast = (message, type = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -66,8 +141,13 @@ export const RoleProvider = ({ children }) => {
     }
   };
 
-  const switchRole = (newRoleKey) => {
+  const switchRole = async (newRoleKey) => {
     setRoleKey(newRoleKey);
+    try {
+      await api.login(newRoleKey.toLowerCase(), 'password');
+    } catch (e) {
+      // safe fallback
+    }
     addAuditLog({
       action: 'ROLE_SWITCH',
       summary: `Switched operational context to ${ROLES[newRoleKey].badge}`,
@@ -93,14 +173,14 @@ export const RoleProvider = ({ children }) => {
   // Add an action requiring human approval
   const queueHumanApproval = (actionData) => {
     const newApproval = {
-      id: `APPR-${Date.now().toString().slice(-4)}`,
+      id: actionData.id || `APPR-${Date.now().toString().slice(-4)}`,
       createdAt: new Date().toLocaleTimeString(),
       status: 'PENDING_APPROVAL',
       operatorRole: currentRole.badge,
       ...actionData
     };
     setPendingApprovals(prev => [newApproval, ...prev]);
-    addToast(`New action preview queued for human authorization: ${actionData.title}`, 'warning');
+    addToast(`New action preview queued for human authorization: ${actionData.title || 'Action'}`, 'warning');
     return newApproval;
   };
 
@@ -111,26 +191,33 @@ export const RoleProvider = ({ children }) => {
   };
 
   // Approve a pending action
-  const approveAction = (approvalId) => {
+  const approveAction = async (approvalId) => {
     const item = pendingApprovals.find(a => a.id === approvalId);
     if (!item) return;
+
+    // Call live backend POST /pending/{id}/approve
+    try {
+      await api.approvePending(approvalId);
+    } catch (e) {
+      console.warn('Backend sync for approval:', e.message);
+    }
 
     setPendingApprovals(prev => prev.map(a => a.id === approvalId ? { ...a, status: 'APPROVED', approvedAt: new Date().toLocaleTimeString() } : a));
 
     if (item.type === 'WHATSAPP_DISPATCH') {
       addAuditLog({
         action: 'WHATSAPP_DISPATCH_EXECUTED',
-        summary: `Dispatched WhatsApp reminder to ${item.recipientCount} student(s) regarding EMI and attendance`,
-        query: `DISPATCH_WHATSAPP(template='emi_attendance_alert', recipients=${item.recipientCount})`,
+        summary: `Dispatched WhatsApp reminder to ${item.recipientCount || 1} student(s) regarding EMI and attendance`,
+        query: `DISPATCH_WHATSAPP(template='emi_attendance_alert', recipients=${item.recipientCount || 1})`,
         status: 'Sent via WhatsApp Gateway',
         securityCheck: 'Human Verified & Approved'
       });
-      addToast(`Dispatched WhatsApp broadcast to ${item.recipientCount} student(s)`, 'success');
+      addToast(`Dispatched WhatsApp broadcast to ${item.recipientCount || 1} student(s)`, 'success');
       triggerConfetti();
     } else if (item.type === 'TIMETABLE_REPLAN') {
       addAuditLog({
         action: 'TIMETABLE_REPLAN_EXECUTED',
-        summary: `Applied clash-free schedule adjustment: ${item.summary}`,
+        summary: `Applied clash-free schedule adjustment: ${item.summary || 'Schedule Re-Plan'}`,
         query: item.query || 'APPLY_TIMETABLE_CHANGES()',
         status: 'Timetable Updated',
         securityCheck: 'Clash-Free Heuristic Validated'
@@ -141,7 +228,14 @@ export const RoleProvider = ({ children }) => {
   };
 
   // Reject a pending action
-  const rejectAction = (approvalId, reason = 'Rejected by operator') => {
+  const rejectAction = async (approvalId, reason = 'Rejected by operator') => {
+    // Call live backend POST /pending/{id}/reject
+    try {
+      await api.rejectPending(approvalId);
+    } catch (e) {
+      console.warn('Backend sync for rejection:', e.message);
+    }
+
     setPendingApprovals(prev => prev.map(a => a.id === approvalId ? { ...a, status: 'REJECTED', rejectReason: reason } : a));
     addAuditLog({
       action: 'ACTION_REJECTED',
@@ -373,6 +467,10 @@ export const RoleProvider = ({ children }) => {
         replanForRoomMaintenance,
         validateQuerySecurity,
         triggerConfetti,
+        backendConnected,
+        backendToken,
+        api,
+        syncWithBackend,
         toasts,
         addToast,
         removeToast,

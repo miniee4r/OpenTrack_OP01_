@@ -18,14 +18,18 @@ export const AuditLogView = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredLogs = auditLogs.filter(log => {
-    if (filterAction !== 'All' && !log.action.includes(filterAction)) return false;
+    if (filterAction !== 'All' && !(log.action || '').includes(filterAction)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
+      const summaryText = (log.summary || log.detail || '').toLowerCase();
+      const whoText = (log.operatorName || log.who || '').toLowerCase();
+      const roleText = (log.operatorRole || log.role || '').toLowerCase();
+      const queryText = (log.query || log.action || '').toLowerCase();
       return (
-        log.summary.toLowerCase().includes(q) ||
-        log.operatorName.toLowerCase().includes(q) ||
-        log.operatorRole.toLowerCase().includes(q) ||
-        log.query.toLowerCase().includes(q)
+        summaryText.includes(q) ||
+        whoText.includes(q) ||
+        roleText.includes(q) ||
+        queryText.includes(q)
       );
     }
     return true;

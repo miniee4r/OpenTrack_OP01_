@@ -20,7 +20,9 @@ export const Header = () => {
     selectedCampus, 
     setSelectedCampus,
     setIsCopilotOpen,
-    pendingApprovals
+    pendingApprovals,
+    backendConnected,
+    backendToken
   } = useRole();
 
   const pendingCount = pendingApprovals.filter(a => a.status === 'PENDING_APPROVAL').length;
@@ -144,6 +146,29 @@ export const Header = () => {
         }}>
           <span className="pulse-dot"></span>
           <span>Zero Timetable Clashes</span>
+        </div>
+
+        {/* Backend API Connection Indicator (Contract: http://localhost:8000) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          fontSize: '0.72rem',
+          fontWeight: '700',
+          color: backendConnected ? '#6ee7b7' : '#fcd34d',
+          background: backendConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+          border: `1px solid ${backendConnected ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+          padding: '4px 10px',
+          borderRadius: '20px'
+        }} title={backendConnected ? `Backend Live at http://localhost:8000 | Bearer Token Active` : 'Syncing with http://localhost:8000...'}>
+          <span style={{
+            width: '7px',
+            height: '7px',
+            borderRadius: '50%',
+            background: backendConnected ? '#10b981' : '#f59e0b',
+            boxShadow: backendConnected ? '0 0 8px #10b981' : 'none'
+          }}></span>
+          <span>{backendConnected ? 'API Live (:8000)' : 'API Syncing...'}</span>
         </div>
       </div>
 
