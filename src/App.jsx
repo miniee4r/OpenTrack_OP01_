@@ -1,179 +1,200 @@
-import React, { useState, useEffect } from 'react';
-import { RoleProvider, useRole } from './context/RoleContext';
-import { Header } from './components/Header';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { AICopilot } from './components/AICopilot';
-import { StudentsView } from './components/StudentsView';
-import { BatchesView } from './components/BatchesView';
-import { TimetableGenerator } from './components/TimetableGenerator';
-import { FeeReconciler } from './components/FeeReconciler';
-import { RiskEngine } from './components/RiskEngine';
-import { CertificateBuilder } from './components/CertificateBuilder';
-import { AuditLogView } from './components/AuditLogView';
-import { Sparkles, Bot, X, CheckCircle2, AlertTriangle, Info, AlertOctagon } from 'lucide-react';
+import { HomePage } from './components/HomePage';
+import { CopilotPage } from './components/CopilotPage';
+import { AtRiskPage } from './components/AtRiskPage';
+import { ApprovalsPage } from './components/ApprovalsPage';
+import { TimetablePage } from './components/TimetablePage';
+import { AuditLogPage } from './components/AuditLogPage';
+import { setAuthToken, registerUnauthorizedHandler, fetchPendingActions } from './api';
 
-const AppContent = () => {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [certStudent, setCertStudent] = useState(null);
-  const { isCopilotOpen, setIsCopilotOpen, toasts, removeToast } = useRole();
+export function App() {
+  // Authentication State kept strictly in-memory (no localStorage)
+  const [user, setUser] = useState(null); // { username, role, token }
+  const [activePage, setActivePage] = useState('home');
+  const [copilotPrompt, setCopilotPrompt] = useState('');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  // Keyboard shortcut: Ctrl+K / Cmd+K toggles Copilot
+  // Logout handler resets all state and returns to Login page
+  const handleLogout = useCallback(() => {
+    setAuthToken('');
+    setUser(null);
+    setActivePage('home');
+    setCopilotPrompt('');
+    setPendingCount(0);
+  }, []);
+
+  // Register global 401 interceptor
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsCopilotOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setIsCopilotOpen]);
+    registerUnauthorizedHandler(() => {
+      handleLogout();
+    });
+  }, [handleLogout]);
 
-  const handleSelectCertificateStudent = (student) => {
-    setCertStudent(student);
-    setActiveTab('certificates');
+  // Load pending approvals count periodically when logged in as non-trainer
+  const refreshPendingCount = useCallback(async () => {
+    if (user && user.role !== 'trainer') {
+      try {
+        const list = await fetchPendingActions();
+        if (Array.isArray(list)) {
+          const count = list.filter((a) => (a.status || '').toLowerCase() === 'pending').length;
+          setPendingCount(count);
+        }
+      } catch (e) {
+        // Silently ignore background polling failure
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user && user.role !== 'trainer') {
+      refreshPendingCount();
+    }
+  }, [user, refreshPendingCount]);
+
+  // Login success handler
+  const handleLoginSuccess = (userData) => {
+    setAuthToken(userData.token);
+    setUser(userData);
+    setActivePage('home'); // Go straight to Home (Morning Brief) page
   };
 
-  const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'overview':
-        return <Dashboard setActiveTab={setActiveTab} />;
+  // Navigate to Copilot with an automatic query
+  const handleNavigateToCopilot = (promptText) => {
+    setCopilotPrompt(promptText || '');
+    setActivePage('copilot');
+  };
+
+  // Navigate to another page from Morning Brief
+  const handleNavigateToPage = (target) => {
+    const pageMap = {
+      approvals: 'approvals',
+      timetable: 'timetable',
+      'at-risk': 'at-risk',
+      audit: 'audit',
+      home: 'home',
+    };
+    setActivePage(pageMap[target] || 'home');
+  };
+
+  // Ask Copilot about a specific student from At-Risk page
+  const handleAskCopilotAboutStudent = (student) => {
+    const prompt = `Tell me more about student ${student.name} in batch ${student.batch} and their attendance and EMI status.`;
+    handleNavigateToCopilot(prompt);
+  };
+
+  // IF NOT LOGGED IN -> MUST RENDER LOGIN PAGE (no other page reachable)
+  if (!user) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // Active page renderer
+  const renderPage = () => {
+    switch (activePage) {
+      case 'home':
+        return (
+          <HomePage
+            user={user}
+            onNavigateToCopilot={handleNavigateToCopilot}
+            onNavigateToPage={handleNavigateToPage}
+          />
+        );
       case 'copilot':
-        return <AICopilot isDrawer={false} />;
-      case 'students':
-        return <StudentsView onSelectCertificateStudent={handleSelectCertificateStudent} />;
-      case 'batches':
-        return <BatchesView />;
+        return (
+          <CopilotPage
+            user={user}
+            initialPrompt={copilotPrompt}
+            onActionDecided={refreshPendingCount}
+          />
+        );
+      case 'at-risk':
+        return (
+          <AtRiskPage
+            onAskCopilotAboutStudent={handleAskCopilotAboutStudent}
+          />
+        );
+      case 'approvals':
+        // Guard: trainers cannot access approvals
+        if (user.role === 'trainer') {
+          return (
+            <div className="page-wrapper">
+              <div className="error-box">
+                <span>🔒</span>
+                <span>Trainers do not have access to the Approvals page.</span>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <ApprovalsPage
+            onPendingCountChange={setPendingCount}
+          />
+        );
       case 'timetable':
-        return <TimetableGenerator />;
-      case 'fees':
-        return <FeeReconciler />;
-      case 'risk':
-        return <RiskEngine />;
-      case 'certificates':
-        return <CertificateBuilder preselectedStudent={certStudent} />;
+        return <TimetablePage />;
       case 'audit':
-        return <AuditLogView />;
+        // Guard: only owner can access audit log
+        if (user.role !== 'owner') {
+          return (
+            <div className="page-wrapper">
+              <div className="error-box">
+                <span>🔒</span>
+                <span>Access Denied: Only the Owner role can view the Audit Ledger.</span>
+              </div>
+            </div>
+          );
+        }
+        return <AuditLogPage />;
       default:
-        return <Dashboard setActiveTab={setActiveTab} />;
+        return (
+          <HomePage
+            user={user}
+            onNavigateToCopilot={handleNavigateToCopilot}
+            onNavigateToPage={handleNavigateToPage}
+          />
+        );
     }
   };
 
   return (
-    <div className="app-layout">
-      {/* Sidebar Navigation */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-
-      {/* Main Content Area */}
-      <div className="main-content">
-        <Header />
-
-        <main className="page-container">
-          {renderActiveTab()}
-        </main>
+    <div className="app-container">
+      {/* Mobile Top Header */}
+      <div className="mobile-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '0.95rem' }}>
+          <span>🏫</span>
+          <span>Ops Copilot</span>
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setIsMobileOpen((prev) => !prev)}
+        >
+          {isMobileOpen ? '✕ Close' : '☰ Menu'}
+        </button>
       </div>
 
-      {/* Slide-over Copilot Drawer (accessible from any page via Cmd+K or Header button) */}
-      {isCopilotOpen && (
-        <div 
-          className="modal-backdrop animate-fade-in" 
-          onClick={() => setIsCopilotOpen(false)}
-          style={{ justifyContent: 'flex-end', padding: 0 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: '680px',
-              height: '100vh',
-              background: 'var(--bg-surface)',
-              borderLeft: '1px solid var(--border-accent)',
-              boxShadow: '-10px 0 35px rgba(0, 0, 0, 0.7)',
-              display: 'flex',
-              flexDirection: 'column',
-              animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-            }}
-          >
-            <AICopilot isDrawer={true} onClose={() => setIsCopilotOpen(false)} />
-          </div>
-        </div>
-      )}
+      {/* Left Sidebar */}
+      <Sidebar
+        activePage={activePage}
+        setActivePage={(page) => {
+          setActivePage(page);
+          setCopilotPrompt('');
+        }}
+        user={user}
+        onLogout={handleLogout}
+        pendingCount={pendingCount}
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
+      />
 
-      {/* Real-Time Toast Notifications Stack (Bottom-Right) */}
-      {toasts.length > 0 && (
-        <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
-          zIndex: 9999,
-          maxWidth: '420px',
-        }}>
-          {toasts.map(toast => {
-            const isSuccess = toast.type === 'success';
-            const isDanger = toast.type === 'danger';
-            const isWarning = toast.type === 'warning';
-
-            return (
-              <div
-                key={toast.id}
-                className="animate-slide-up"
-                style={{
-                  background: isSuccess 
-                    ? 'rgba(16, 185, 129, 0.95)' 
-                    : isDanger 
-                      ? 'rgba(239, 68, 68, 0.95)' 
-                      : isWarning 
-                        ? 'rgba(245, 158, 11, 0.95)' 
-                        : 'rgba(30, 41, 59, 0.95)',
-                  backdropFilter: 'blur(12px)',
-                  color: '#fff',
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                  fontSize: '0.84rem',
-                  fontWeight: '500',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {isSuccess ? <CheckCircle2 size={16} /> : isDanger ? <AlertOctagon size={16} /> : isWarning ? <AlertTriangle size={16} /> : <Info size={16} />}
-                  <span>{toast.message}</span>
-                </div>
-                <button
-                  onClick={() => removeToast(toast.id)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.8)',
-                    cursor: 'pointer',
-                    padding: '2px',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Main Content Area */}
+      <main className="main-content">
+        {renderPage()}
+      </main>
     </div>
   );
-};
-
-export default function App() {
-  return (
-    <RoleProvider>
-      <AppContent />
-    </RoleProvider>
-  );
 }
+
+export default App;
