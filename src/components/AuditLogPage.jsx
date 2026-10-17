@@ -35,7 +35,7 @@ export const AuditLogPage = () => {
 
   return (
     <div className="page-wrapper">
-      {/* Header */}
+      {/* Header Row */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 className="page-title">Audit Ledger</h1>
@@ -63,12 +63,9 @@ export const AuditLogPage = () => {
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading Skeletons */}
       {isLoading && (
-        <div className="loading-box">
-          <div className="spinner"></div>
-          <div>Loading audit logs...</div>
-        </div>
+        <div className="card skeleton" style={{ height: '300px' }}></div>
       )}
 
       {/* Audit Table */}
@@ -88,14 +85,14 @@ export const AuditLogPage = () => {
               <tbody>
                 {logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       No audit records found.
                     </td>
                   </tr>
                 ) : (
                   logs.map((log, idx) => (
                     <tr key={idx}>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '12px', whiteSpace: 'nowrap' }}>
                         {log.ts}
                       </td>
                       <td style={{ fontWeight: '600', color: 'var(--text-main)' }}>
@@ -111,7 +108,7 @@ export const AuditLogPage = () => {
                           {log.action}
                         </span>
                       </td>
-                      <td style={{ fontSize: '0.84rem', color: '#374151', lineHeight: '1.45' }}>
+                      <td style={{ fontSize: '13px', color: '#374151', lineHeight: '1.45' }}>
                         {log.detail}
                       </td>
                     </tr>

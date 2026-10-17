@@ -1,31 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { askCopilot, approvePendingAction, rejectPendingAction, runSecurityTest } from '../api';
+import { fetchCopilotSuggestions, askCopilot, approvePendingAction, rejectPendingAction, runSecurityTest } from '../api';
 
-export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
+export const CopilotPage = ({ user, initialPrompt, onPromptConsumed, onActionDecided }) => {
+  const [suggestionsConfig, setSuggestionsConfig] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [copiedSqlId, setCopiedSqlId] = useState(null);
   const [expandedSqlIds, setExpandedSqlIds] = useState({});
-  const [pendingStatuses, setPendingStatuses] = useState({}); // { [actionId]: 'sent' | 'rejected' }
+  const [pendingStatuses, setPendingStatuses] = useState({});
   const [securityTestResult, setSecurityTestResult] = useState(null);
   const [isRunningSecurityTest, setIsRunningSecurityTest] = useState(false);
 
+  // Guards against double submit and React StrictMode double invocation (B7)
+  const isProcessingRef = useRef(false);
+  const pendingQuestionRef = useRef('');
+  const lastInitialPromptRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const role = user?.role || 'owner';
-
-  // Role-based initial suggestion chips
-  const suggestionChips = role === 'trainer'
-    ? [
-        "Which students missed 3 or more classes?",
-        "Show EMI amounts for my students",
-        "List student phone numbers",
-      ]
-    : [
-        "Which students in the Java batch missed 3 or more classes and have an EMI due this week? Draft a WhatsApp reminder for each.",
-        "Show unpaid EMIs due this week",
-        "Which students missed 3 or more classes?",
-      ];
+  const hasLoadedWelcomeRef = useRef(false);
 
   // Auto-scroll chat to bottom
   const scrollToBottom = () => {
@@ -36,33 +28,89 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
     scrollToBottom();
   }, [messages, isProcessing]);
 
+  // Load role-specific copilot suggestions on open (B2)
+  useEffect(() => {
+    let isMounted = true;
+    hasLoadedWelcomeRef.current = false;
+    setMessages([]);
+
+    async function loadSuggestions() {
+      try {
+        const config = await fetchCopilotSuggestions();
+        if (isMounted && config) {
+          setSuggestionsConfig(config);
+          // Show "welcome" as the first copilot message
+          if (!hasLoadedWelcomeRef.current && config.welcome) {
+            hasLoadedWelcomeRef.current = true;
+            setMessages([
+              {
+                id: `welcome-${Date.now()}`,
+                sender: 'copilot',
+                isWelcome: true,
+                text: config.welcome,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              },
+            ]);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load copilot suggestions:', e);
+      }
+    }
+
+    loadSuggestions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.username, user?.role]);
+
   // Handle initial prompt passed from Home (Morning Brief) or At-Risk
   useEffect(() => {
     if (initialPrompt && initialPrompt.trim()) {
-      handleSendMessage(initialPrompt.trim());
+      const trimmed = initialPrompt.trim();
+      if (lastInitialPromptRef.current === trimmed) {
+        return; // Guard against React StrictMode double effect execution
+      }
+      lastInitialPromptRef.current = trimmed;
+      handleSendMessage(trimmed);
+      if (onPromptConsumed) {
+        onPromptConsumed();
+      }
+    } else {
+      lastInitialPromptRef.current = null;
     }
   }, [initialPrompt]);
 
   const handleSendMessage = async (questionText) => {
-    const q = (questionText || inputText).trim();
-    if (!q || isProcessing) return;
+    const q = (typeof questionText === 'string' ? questionText : inputText).trim();
+    if (!q) return;
 
-    // Add user message
+    // Guard against double submits (B7)
+    if (isProcessingRef.current || pendingQuestionRef.current === q) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+    pendingQuestionRef.current = q;
+    setIsProcessing(true);
+    setInputText('');
+
+    // Exactly ONE user bubble per question (B7)
     const userMsg = {
-      id: `user-${Date.now()}`,
+      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       sender: 'user',
       text: q,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    setInputText('');
-    setIsProcessing(true);
 
     try {
       const data = await askCopilot(q);
+      // Exactly ONE answer card per question (B7)
       const botMsg = {
-        id: `bot-${Date.now()}`,
+        id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         sender: 'copilot',
         data,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -70,7 +118,7 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
       setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
       const errorMsg = {
-        id: `bot-${Date.now()}`,
+        id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         sender: 'copilot',
         data: {
           error: err.message || 'An error occurred while running the query.',
@@ -79,6 +127,8 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
+      isProcessingRef.current = false;
+      pendingQuestionRef.current = '';
       setIsProcessing(false);
     }
   };
@@ -116,20 +166,6 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
     }
   };
 
-  const handleApproveAll = async (pendingList) => {
-    for (const item of pendingList) {
-      if (!pendingStatuses[item.id]) {
-        try {
-          await approvePendingAction(item.id);
-          setPendingStatuses((prev) => ({ ...prev, [item.id]: 'sent' }));
-        } catch (e) {
-          console.warn('Error approving', item.id, e);
-        }
-      }
-    }
-    if (onActionDecided) onActionDecided();
-  };
-
   const handleRunSecurityTest = async () => {
     setIsRunningSecurityTest(true);
     try {
@@ -142,7 +178,6 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
     }
   };
 
-  // Helper to format table headers: replace underscores, capitalize each word
   const formatHeader = (colName) => {
     return colName
       .replace(/_/g, ' ')
@@ -151,459 +186,330 @@ export const CopilotPage = ({ user, initialPrompt, onActionDecided }) => {
 
   return (
     <div className="page-wrapper" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)', paddingBottom: '16px' }}>
-      {/* Header */}
+      {/* Header Row */}
       <div className="page-header" style={{ marginBottom: '16px' }}>
-        <h1 className="page-title">AI Operations Copilot</h1>
-        <p className="page-subtitle">Translate staff instructions into safe, verified read-only queries.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h1 className="page-title">Operations Copilot</h1>
+            {/* "helper" strictly under the page title from GET /copilot/suggestions (B2) */}
+            <p className="page-subtitle">
+              {suggestionsConfig?.helper || 'Natural language queries with SQLite authorizer protection.'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleRunSecurityTest}
+            disabled={isRunningSecurityTest}
+          >
+            <span>🛡️</span>
+            <span>{isRunningSecurityTest ? 'Auditing Security...' : 'Run Security Check'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Main Conversation Container */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        paddingRight: '6px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '16px',
-      }}>
-        {/* Empty State / Initial Suggestions */}
-        {messages.length === 0 && (
-          <div className="card" style={{ padding: '24px', textAlign: 'center', backgroundColor: '#FFFFFF' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🤖</div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: '600', color: 'var(--text-main)', marginBottom: '6px' }}>
-              How can I assist your operations today?
+      {/* Security Test Results Drawer / Modal */}
+      {securityTestResult && (
+        <div className="card" style={{ marginBottom: '16px', borderLeft: '4px solid var(--info)', padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🛡️</span>
+              <span>Permission & Security Verification Results</span>
             </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '18px' }}>
-              Choose a sample question below or type your own prompt in plain English.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-              {suggestionChips.map((chipText, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className="chip"
-                  onClick={() => handleSendMessage(chipText)}
-                >
-                  <span>{chipText}</span>
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setSecurityTestResult(null)}
+            >
+              ✕ Close
+            </button>
           </div>
-        )}
+          <div className="table-container" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Test Scenario</th>
+                  <th>SQL / Request</th>
+                  <th>Status</th>
+                  <th>Enforcement Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {securityTestResult.map((test, idx) => (
+                  <tr key={idx}>
+                    <td style={{ fontWeight: '500' }}>{test.prompt}</td>
+                    <td><code>{test.sql_or_request || test.sql}</code></td>
+                    <td>
+                      {test.blocked ? (
+                        <span className="badge badge-high">🛡️ BLOCKED (SAFE)</span>
+                      ) : (
+                        <span className="badge badge-low">PERMITTED</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{test.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-        {/* Message Stream */}
+      {/* Chat Messages History Container */}
+      <div className="chat-messages-container" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', padding: '12px 0' }}>
         {messages.map((msg) => {
           if (msg.sender === 'user') {
             return (
-              <div
-                key={msg.id}
-                style={{
-                  alignSelf: 'flex-end',
-                  maxWidth: '75%',
-                  backgroundColor: 'var(--primary)',
-                  color: '#FFFFFF',
-                  borderRadius: '16px 16px 4px 16px',
-                  padding: '12px 18px',
-                  fontSize: '0.9rem',
-                  lineHeight: '1.45',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <div>{msg.text}</div>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', textAlign: 'right', marginTop: '4px' }}>
-                  {msg.timestamp}
-                </div>
+              <div key={msg.id} className="chat-bubble user-bubble">
+                <div className="bubble-text">{msg.text}</div>
+                <div className="bubble-time">{msg.timestamp}</div>
               </div>
             );
           }
 
-          // Copilot Response Card
-          const { data } = msg;
-          const isError = Boolean(data?.error);
-          const isBlocked = isError && String(data?.error).toLowerCase().includes('blocked');
+          // Welcome Message
+          if (msg.isWelcome) {
+            return (
+              <div key={msg.id} className="chat-bubble bot-bubble" style={{ borderLeft: '4px solid var(--primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '18px' }}>🤖</span>
+                  <span style={{ fontWeight: '600', color: 'var(--primary)' }}>Ops Copilot</span>
+                </div>
+                <div className="bubble-text">{msg.text}</div>
+                <div className="bubble-time">{msg.timestamp}</div>
+              </div>
+            );
+          }
+
+          // Bot Answer Card
+          const data = msg.data || {};
+          const hasError = !!data.error;
+          const hasResults = Array.isArray(data.rows) && data.rows.length > 0;
+          const hasPending = Array.isArray(data.pending) && data.pending.length > 0;
+          const isSqlExpanded = !!expandedSqlIds[msg.id];
+          const isCopied = copiedSqlId === msg.id;
 
           return (
-            <div
-              key={msg.id}
-              style={{
-                alignSelf: 'flex-start',
-                width: '100%',
-                maxWidth: '920px',
-                backgroundColor: 'var(--bg-card)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-lg)',
-                padding: '20px',
-                boxShadow: 'var(--shadow-sm)',
-              }}
-            >
-              {/* ERROR STATE */}
-              {isError ? (
-                <div style={{
-                  backgroundColor: 'var(--danger-light)',
-                  border: '1px solid var(--danger-border)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '16px',
-                  color: 'var(--danger-text)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '0.92rem' }}>
-                    <span>🔒</span>
-                    <span>Access Restricted</span>
+            <div key={msg.id} className="chat-bubble bot-bubble">
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '18px' }}>🤖</span>
+                  <span style={{ fontWeight: '600', color: 'var(--primary)' }}>Ops Copilot</span>
+                </div>
+                <span className="bubble-time">{msg.timestamp}</span>
+              </div>
+
+              {/* Exact Backend Error Display (A3 & B2) */}
+              {hasError ? (
+                <div className="error-box" role="alert" style={{ marginBottom: '10px' }}>
+                  <span>⚠️</span>
+                  <span>{data.error}</span>
+                </div>
+              ) : (
+                /* Gemini Summary */
+                data.summary && (
+                  <div className="bot-summary-text" style={{ fontSize: '14px', lineHeight: '1.5', marginBottom: '12px', fontWeight: '500' }}>
+                    {data.summary}
                   </div>
-                  <p style={{ fontSize: '0.86rem', marginTop: '6px', lineHeight: '1.45' }}>
-                    {data.error}
-                  </p>
-                  {isBlocked && (
-                    <p style={{ fontSize: '0.8rem', marginTop: '8px', color: '#B91C1C', fontStyle: 'italic' }}>
-                      Your role doesn't have access to this data. This is enforced by the system, not just the AI.
-                    </p>
-                  )}
-                  {data.sql && (
-                    <div style={{ marginTop: '12px', background: '#1E293B', color: '#94A3B8', padding: '10px 12px', borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'monospace' }}>
-                      <code>{data.sql}</code>
+                )
+              )}
+
+              {/* Collapsed "How I got this" SQL Drawer (B7) */}
+              {data.sql && (
+                <div className="sql-inspection-drawer" style={{ marginBottom: '12px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 10px',
+                      backgroundColor: 'var(--bg-card-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      border: '1px solid var(--border-color)',
+                    }}
+                    onClick={() => toggleSqlExpand(msg.id)}
+                  >
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
+                      {isSqlExpanded ? '▼ Hide SQL Query' : '▶ How I got this (SQL)'}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '2px 8px', fontSize: '11px' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopySql(data.sql, msg.id);
+                      }}
+                    >
+                      {isCopied ? '✓ Copied' : '📋 Copy SQL'}
+                    </button>
+                  </div>
+                  {isSqlExpanded && (
+                    <div style={{ marginTop: '6px', padding: '10px', backgroundColor: '#1E293B', borderRadius: 'var(--radius-sm)', color: '#F8FAFC', fontSize: '12px', fontFamily: 'monospace', overflowX: 'auto' }}>
+                      <pre style={{ margin: 0 }}>{data.sql}</pre>
                     </div>
                   )}
                 </div>
-              ) : (
-                /* SUCCESS STATE - Rendered in exact requested order */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* (1) The "summary" sentence in bold */}
-                  {data.summary && (
-                    <div style={{ fontSize: '0.96rem', fontWeight: '700', color: 'var(--text-main)', lineHeight: '1.45' }}>
-                      {data.summary}
-                    </div>
-                  )}
+              )}
 
-                  {/* (2) Results table with readable headers & row count */}
-                  {data.columns && data.columns.length > 0 && (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Results ({data.rows?.length || 0} {data.rows?.length === 1 ? 'row' : 'rows'})
-                        </span>
-                      </div>
-                      <div className="table-container">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              {data.columns.map((col, idx) => (
-                                <th key={idx}>{formatHeader(col)}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {data.rows?.length === 0 ? (
-                              <tr>
-                                <td colSpan={data.columns.length} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
-                                  No records matched the criteria.
-                                </td>
-                              </tr>
-                            ) : (
-                              data.rows?.map((row, rIdx) => (
-                                <tr key={rIdx}>
-                                  {row.map((cell, cIdx) => (
-                                    <td key={cIdx}>{String(cell)}</td>
-                                  ))}
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* (3) Collapsed "How I got this" section with SQL in dark code block and Copy button */}
-                  {data.sql && (
-                    <div style={{
-                      backgroundColor: 'var(--bg-card-subtle)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      overflow: 'hidden',
-                    }}>
-                      <div
-                        onClick={() => toggleSqlExpand(msg.id)}
-                        style={{
-                          padding: '10px 14px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                        }}
-                      >
-                        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)' }}>
-                          {expandedSqlIds[msg.id] ? '▼ Hide SQL Query' : '▶ How I got this (View SQL Query)'}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          Read-Only SQLite Engine
-                        </span>
-                      </div>
-
-                      {expandedSqlIds[msg.id] && (
-                        <div style={{
-                          background: '#1E293B',
-                          color: '#E2E8F0',
-                          padding: '14px',
-                          borderTop: '1px solid var(--border-color)',
-                          position: 'relative',
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              style={{ padding: '3px 8px', fontSize: '0.72rem', background: '#334155', color: '#F8FAFC', border: 'none' }}
-                              onClick={() => handleCopySql(data.sql, msg.id)}
-                            >
-                              {copiedSqlId === msg.id ? '✓ Copied' : '📋 Copy SQL'}
-                            </button>
-                          </div>
-                          <pre style={{ margin: 0, overflowX: 'auto', fontSize: '0.8rem', fontFamily: 'monospace', lineHeight: '1.5' }}>
-                            <code>{data.sql}</code>
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* (4) "Review before sending" section with preview cards */}
-                  {data.pending && data.pending.length > 0 && (
-                    <div style={{
-                      backgroundColor: '#FFFBEB',
-                      border: '1px solid var(--warning-border)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '16px',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                        <div>
-                          <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--warning-text)' }}>
-                            Review before sending
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: '#78350F' }}>
-                            Nothing is sent until you approve.
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="btn btn-success btn-sm"
-                          onClick={() => handleApproveAll(data.pending)}
-                        >
-                          ✓ Approve all ({data.pending.length})
-                        </button>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-                        {data.pending.map((p) => {
-                          const currentStatus = pendingStatuses[p.id] || p.status || 'pending';
-                          const isDecided = currentStatus === 'sent' || currentStatus === 'rejected';
-
-                          return (
-                            <div
-                              key={p.id}
-                              style={{
-                                backgroundColor: '#FFFFFF',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: 'var(--radius-md)',
-                                padding: '12px 14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div>
-                                  <strong style={{ fontSize: '0.88rem', color: 'var(--text-main)' }}>
-                                    {p.student_name}
-                                  </strong>
-                                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                                    {p.phone}
-                                  </span>
-                                </div>
-
-                                {isDecided ? (
-                                  <span className={`badge ${currentStatus === 'sent' ? 'badge-success' : 'badge-danger'}`} style={{ textTransform: 'capitalize' }}>
-                                    {currentStatus === 'sent' ? '✓ Sent' : '✕ Rejected'}
-                                  </span>
-                                ) : (
-                                  <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-danger-outline btn-sm"
-                                      onClick={() => handleReject(p.id)}
-                                    >
-                                      Reject
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-success btn-sm"
-                                      onClick={() => handleApprove(p.id)}
-                                    >
-                                      Approve
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              <p style={{ fontSize: '0.82rem', color: '#374151', background: '#F9FAFB', padding: '8px 10px', borderRadius: '6px', margin: 0, fontStyle: 'italic' }}>
-                                "{p.message}"
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* (5) "follow_ups" as clickable chips */}
-                  {data.follow_ups && data.follow_ups.length > 0 && (
-                    <div style={{ marginTop: '4px' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Suggested follow-ups
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {data.follow_ups.map((fu, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            className="chip"
-                            style={{ fontSize: '0.78rem' }}
-                            onClick={() => handleSendMessage(fu)}
-                          >
-                            <span>{fu}</span>
-                          </button>
+              {/* Query Results Table (Exactly ONE table) (B7) */}
+              {hasResults && (
+                <div className="table-container" style={{ maxHeight: '260px', overflowY: 'auto', marginBottom: '12px' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        {data.columns.map((col, cIdx) => (
+                          <th key={cIdx}>{formatHeader(col)}</th>
                         ))}
-                      </div>
-                    </div>
-                  )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.rows.map((row, rIdx) => (
+                        <tr key={rIdx}>
+                          {row.map((cell, cIdx) => (
+                            <td key={cIdx}>
+                              {typeof cell === 'boolean'
+                                ? cell ? 'Yes' : 'No'
+                                : (cell !== null && cell !== undefined ? String(cell) : '-')}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Drafted Actions (Approval Items) */}
+              {hasPending && (
+                <div className="drafted-actions-box" style={{ marginTop: '8px', padding: '12px', backgroundColor: 'var(--primary-light)', borderRadius: 'var(--radius-md)', border: '1px solid var(--info-border)' }}>
+                  <div style={{ fontWeight: '600', color: 'var(--primary-text)', marginBottom: '8px', fontSize: '13px' }}>
+                    📝 Drafted Communication ({data.pending.length} message{data.pending.length > 1 ? 's' : ''} awaiting approval):
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {data.pending.map((item) => {
+                      const status = pendingStatuses[item.id] || 'pending';
+                      return (
+                        <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', gap: '8px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.student_name} <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>({item.phone})</span></div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>"{item.message}"</div>
+                          </div>
+                          <div>
+                            {status === 'sent' && (
+                              <span className="badge badge-low">✓ Sent (Mock)</span>
+                            )}
+                            {status === 'rejected' && (
+                              <span className="badge badge-high">✕ Rejected</span>
+                            )}
+                            {status === 'pending' && (
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => handleApprove(item.id)}
+                                >
+                                  Approve & Send
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => handleReject(item.id)}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Role-Appropriate Follow-up Suggestions Chips */}
+              {Array.isArray(data.follow_ups) && data.follow_ups.length > 0 && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Suggested Follow-ups:
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {data.follow_ups.map((chipText, cIdx) => (
+                      <button
+                        key={cIdx}
+                        type="button"
+                        className="chip"
+                        onClick={() => handleSendMessage(chipText)}
+                        disabled={isProcessing}
+                      >
+                        {chipText}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
 
-        {/* Processing Indicator */}
         {isProcessing && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: 'var(--bg-card)',
-            padding: '12px 18px',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--border-color)',
-            alignSelf: 'flex-start',
-            fontSize: '0.85rem',
-            color: 'var(--text-muted)',
-          }}>
-            <div className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px', margin: 0 }}></div>
-            <span>Generating safe query & inspecting institute records...</span>
+          <div className="chat-bubble bot-bubble skeleton" style={{ width: '60%', height: '50px' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Thinking & executing SQL...</span>
           </div>
         )}
-
-        {/* Trainers only: "Try to break it" Security Test Card */}
-        {role === 'trainer' && (
-          <div className="card" style={{ marginTop: '16px', border: '1px dashed var(--warning-border)', backgroundColor: '#FEFDFB' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <div>
-                <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-main)' }}>
-                  🛡️ Try to break it (Security Authorizer Test)
-                </h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Test the database engine against 5 forbidden attack queries (EMIs, student phones, users, sqlite_master, DROP table).
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleRunSecurityTest}
-                disabled={isRunningSecurityTest}
-              >
-                {isRunningSecurityTest ? 'Testing...' : 'Run security test'}
-              </button>
-            </div>
-
-            {securityTestResult && (
-              <div style={{ marginTop: '14px' }}>
-                <div className="table-container">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Attack Attempt</th>
-                        <th>Target Query</th>
-                        <th>Security Result</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {securityTestResult.map((test, idx) => (
-                        <tr key={idx}>
-                          <td style={{ fontWeight: '500' }}>{test.prompt}</td>
-                          <td><code>{test.sql}</code></td>
-                          <td>
-                            <span className={`badge ${test.blocked ? 'badge-success' : 'badge-danger'}`}>
-                              {test.blocked ? '✓ Blocked' : '✕ Allowed'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{
-                  marginTop: '10px',
-                  fontSize: '0.82rem',
-                  fontWeight: '700',
-                  color: 'var(--success-text)',
-                  backgroundColor: 'var(--success-light)',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  display: 'inline-block',
-                }}>
-                  ✓ {securityTestResult.filter((t) => t.blocked).length} of {securityTestResult.length} attacks blocked by SQLite Authorizer
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Fixed Input Bar */}
-      <div style={{
-        marginTop: '12px',
-        padding: '12px 16px',
-        backgroundColor: 'var(--bg-card)',
-        borderRadius: 'var(--radius-lg)',
-        border: '1px solid var(--border-color)',
-        boxShadow: 'var(--shadow-sm)',
-        display: 'flex',
-        gap: '10px',
-        alignItems: 'center',
-      }}>
+      {/* Suggested Prompt Chips strictly from GET /copilot/suggestions (B2) */}
+      {suggestionsConfig?.suggestions && (
+        <div style={{ padding: '8px 0', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>
+            Try asking:
+          </span>
+          {suggestionsConfig.suggestions.map((suggestionText, sIdx) => (
+            <button
+              key={sIdx}
+              type="button"
+              className="chip"
+              onClick={() => handleSendMessage(suggestionText)}
+              disabled={isProcessing}
+            >
+              {suggestionText}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input Form with Dynamic Placeholder (B2 & B7) */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSendMessage(inputText);
+        }}
+        style={{ display: 'flex', gap: '8px', marginTop: '8px' }}
+      >
         <input
           type="text"
           className="input-text"
-          placeholder="Ask a question in plain English (e.g. Which students missed 3 or more classes?)..."
+          style={{ flex: 1 }}
+          placeholder={suggestionsConfig?.placeholder || 'Ask a question in plain English...'}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleSendMessage();
-            }
-          }}
           disabled={isProcessing}
-          style={{ border: 'none', padding: '6px 4px', fontSize: '0.92rem' }}
         />
         <button
-          type="button"
+          type="submit"
           className="btn btn-primary"
-          onClick={() => handleSendMessage()}
-          disabled={!inputText.trim() || isProcessing}
+          disabled={isProcessing || !inputText.trim()}
+          style={{ minWidth: '90px' }}
         >
-          Send
+          {isProcessing ? 'Sending...' : 'Send →'}
         </button>
-      </div>
+      </form>
     </div>
   );
 };

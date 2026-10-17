@@ -51,7 +51,11 @@ async function request(endpoint, options = {}) {
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.detail || `Request failed with status ${res.status}`);
+      const errorMsg = errData.detail || `Request failed with status ${res.status}`;
+      const error = new Error(errorMsg);
+      error.status = res.status;
+      error.data = errData;
+      throw error;
     }
 
     return await res.json();
@@ -80,7 +84,12 @@ export async function fetchBrief() {
   return await request("/brief");
 }
 
-// 3. POST /copilot {question} -> {summary, sql, columns, rows, pending, follow_ups, error}
+// 3. GET /copilot/suggestions -> {welcome, placeholder, helper, suggestions:[...]}
+export async function fetchCopilotSuggestions() {
+  return await request("/copilot/suggestions");
+}
+
+// 4. POST /copilot {question} -> {welcome, summary, sql, columns, rows, pending, follow_ups, error}
 export async function askCopilot(question) {
   return await request("/copilot", {
     method: "POST",
@@ -88,35 +97,119 @@ export async function askCopilot(question) {
   });
 }
 
-// 4. GET /at-risk -> list of students with risk score and reasons
+// 5. GET /at-risk -> list of students with risk score and reasons
 export async function fetchAtRiskStudents() {
   return await request("/at-risk");
 }
 
-// 5. GET /pending -> list of pending actions
-export async function fetchPendingActions() {
-  return await request("/pending");
+// 6. STUDENTS: GET /students, POST /students, DELETE /students/{id}
+export async function fetchStudents() {
+  return await request("/students");
 }
 
-// 6. POST /pending/{id}/approve & POST /pending/{id}/reject
-export async function approvePendingAction(id) {
-  return await request(`/pending/${encodeURIComponent(id)}/approve`, {
+export async function createStudent({ name, phone, batch_id }) {
+  return await request("/students", {
+    method: "POST",
+    body: JSON.stringify({ name, phone, batch_id }),
+  });
+}
+
+export async function deleteStudent(studentId) {
+  return await request(`/students/${encodeURIComponent(studentId)}`, {
+    method: "DELETE",
+  });
+}
+
+// 7. TRAINERS & BATCHES: GET /trainers, POST /trainers, DELETE /trainers/{id}, POST /batches, DELETE /batches/{id}
+export async function fetchTrainers() {
+  return await request("/trainers");
+}
+
+export async function createTrainer({ name, specialization, email, phone }) {
+  return await request("/trainers", {
+    method: "POST",
+    body: JSON.stringify({ name, specialization, email, phone }),
+  });
+}
+
+export async function deleteTrainer(trainerId, reassignTo = null) {
+  const query = reassignTo ? `?reassign_to=${encodeURIComponent(reassignTo)}` : "";
+  return await request(`/trainers/${encodeURIComponent(trainerId)}${query}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createBatch({ name, course, trainer_id, size }) {
+  return await request("/batches", {
+    method: "POST",
+    body: JSON.stringify({ name, course, trainer_id: Number(trainer_id), size: Number(size || 20) }),
+  });
+}
+
+export async function deleteBatch(batchId) {
+  return await request(`/batches/${encodeURIComponent(batchId)}`, {
+    method: "DELETE",
+  });
+}
+
+// 8. APPROVALS: GET /approvals, POST /approvals, POST /approvals/{id}/approve, POST /approvals/{id}/reject
+export async function fetchApprovals(status = "", kind = "") {
+  const params = new URLSearchParams();
+  if (status && status !== "all") params.append("status", status);
+  if (kind && kind !== "all") params.append("kind", kind);
+  const qs = params.toString();
+  return await request(`/approvals${qs ? `?${qs}` : ""}`);
+}
+
+export async function createApproval({ kind, title, details }) {
+  return await request("/approvals", {
+    method: "POST",
+    body: JSON.stringify({ kind, title, details }),
+  });
+}
+
+export async function approveApproval(approvalId) {
+  return await request(`/approvals/${encodeURIComponent(approvalId)}/approve`, {
     method: "POST",
   });
+}
+
+export async function rejectApproval(approvalId) {
+  return await request(`/approvals/${encodeURIComponent(approvalId)}/reject`, {
+    method: "POST",
+  });
+}
+
+// Legacy /pending fallbacks
+export async function fetchPendingActions() {
+  try {
+    return await request("/approvals?status=pending");
+  } catch {
+    return await request("/pending");
+  }
+}
+
+export async function approvePendingAction(id) {
+  try {
+    return await approveApproval(id);
+  } catch {
+    return await request(`/pending/${encodeURIComponent(id)}/approve`, { method: "POST" });
+  }
 }
 
 export async function rejectPendingAction(id) {
-  return await request(`/pending/${encodeURIComponent(id)}/reject`, {
-    method: "POST",
-  });
+  try {
+    return await rejectApproval(id);
+  } catch {
+    return await request(`/pending/${encodeURIComponent(id)}/reject`, { method: "POST" });
+  }
 }
 
-// 7. GET /timetable -> {timetable, unavailable}
+// 9. TIMETABLE: GET /timetable, POST /timetable/replan, POST /timetable/reset
 export async function fetchTimetable() {
   return await request("/timetable");
 }
 
-// POST /timetable/replan {trainer, day}
 export async function replanTimetable(trainer, day) {
   return await request("/timetable/replan", {
     method: "POST",
@@ -124,19 +217,18 @@ export async function replanTimetable(trainer, day) {
   });
 }
 
-// POST /timetable/reset
 export async function resetTimetable() {
   return await request("/timetable/reset", {
     method: "POST",
   });
 }
 
-// 8. GET /audit -> audit logs (owner only)
+// 10. AUDIT LOG (GET /audit)
 export async function fetchAuditLogs() {
   return await request("/audit");
 }
 
-// 9. GET /security-test -> runs 5 hardcoded attack queries
+// 11. SECURITY TEST (GET /security-test)
 export async function runSecurityTest() {
   return await request("/security-test");
 }

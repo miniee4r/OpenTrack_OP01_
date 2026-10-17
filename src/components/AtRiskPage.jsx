@@ -31,7 +31,7 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
 
   return (
     <div className="page-wrapper">
-      {/* Header */}
+      {/* Header Row */}
       <div className="page-header">
         <h1 className="page-title">At-Risk Students</h1>
         <p className="page-subtitle">
@@ -41,7 +41,7 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
 
       {/* Filter Chips */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>
           Filter by Risk:
         </span>
         {['All', 'High', 'Medium', 'Low'].map((level) => (
@@ -73,27 +73,28 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading Skeletons */}
       {isLoading && (
-        <div className="loading-box">
-          <div className="spinner"></div>
-          <div>Analyzing student risk signals...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="card skeleton" style={{ height: '110px' }}></div>
+          <div className="card skeleton" style={{ height: '110px' }}></div>
+          <div className="card skeleton" style={{ height: '110px' }}></div>
         </div>
       )}
 
-      {/* Student Cards Grid */}
+      {/* Student Cards List */}
       {!isLoading && !errorMessage && (
         <>
           {filteredStudents.length === 0 ? (
             <div className="empty-state">
               <div className="empty-state-icon">🛡️</div>
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--text-main)', marginBottom: '4px' }}>
+              <h3 className="section-title" style={{ marginBottom: '4px' }}>
                 No students found
               </h3>
-              <p style={{ fontSize: '0.85rem' }}>No student profiles match the '{riskFilter}' risk filter.</p>
+              <p className="helper-text">No student profiles match the '{riskFilter}' risk filter.</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {filteredStudents.map((s) => {
                 const badgeClass =
                   s.risk === 'high' ? 'badge-high' : s.risk === 'medium' ? 'badge-medium' : 'badge-low';
@@ -107,14 +108,15 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '12px',
+                      marginBottom: 0,
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                        <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>
                           {s.name}
                         </span>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', backgroundColor: '#F3F4F6', padding: '2px 8px', borderRadius: '4px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', backgroundColor: '#F3F4F6', padding: '2px 8px', borderRadius: '4px' }}>
                           Batch: {s.batch}
                         </span>
                         <span className={`badge ${badgeClass}`} style={{ textTransform: 'capitalize' }}>
@@ -123,15 +125,15 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)' }}>
-                          Risk Score: <strong style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>{s.score}</strong>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>
+                          Risk Score: <strong style={{ color: 'var(--text-main)', fontSize: '14px' }}>{s.score}</strong>
                         </div>
                         <button
                           type="button"
-                          className="btn btn-secondary btn-sm"
+                          className="btn btn-primary btn-sm"
                           onClick={() => onAskCopilotAboutStudent(s)}
                         >
-                          Ask copilot about this student →
+                          Ask Copilot →
                         </button>
                       </div>
                     </div>
@@ -142,11 +144,11 @@ export const AtRiskPage = ({ onAskCopilotAboutStudent }) => {
                         backgroundColor: 'var(--bg-card-subtle)',
                         borderRadius: 'var(--radius-sm)',
                         padding: '10px 14px',
-                        fontSize: '0.82rem',
+                        fontSize: '13px',
                         color: 'var(--text-main)',
                       }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                          Root Causes:
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                          Risk Factors:
                         </div>
                         <ul style={{ paddingLeft: '18px', margin: 0 }}>
                           {s.reasons.map((r, idx) => (

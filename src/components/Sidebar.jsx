@@ -11,29 +11,51 @@ export const Sidebar = ({
 }) => {
   const role = user?.role || 'owner';
 
-  // Navigation items filtered strictly by role
-  const menuItems = [
-    { id: 'home', label: 'Home', icon: '🏠', roles: ['owner', 'counselor', 'trainer', 'accounts'] },
-    { id: 'copilot', label: 'Copilot', icon: '🤖', roles: ['owner', 'counselor', 'trainer', 'accounts'] },
-    { id: 'at-risk', label: 'At-risk students', icon: '⚠️', roles: ['owner', 'counselor', 'trainer', 'accounts'] },
-    { id: 'approvals', label: 'Approvals', icon: '📋', roles: ['owner', 'counselor', 'accounts'], badge: pendingCount },
-    { id: 'timetable', label: 'Timetable', icon: '📅', roles: ['owner', 'counselor', 'trainer', 'accounts'] },
-    { id: 'audit', label: 'Audit log', icon: '📜', roles: ['owner'] },
-  ];
+  // Menu items configured strictly per role (B2)
+  const menuConfig = {
+    owner: [
+      { id: 'home', label: 'Home', icon: '🏠' },
+      { id: 'copilot', label: 'Copilot', icon: '🤖' },
+      { id: 'at-risk', label: 'At-risk students', icon: '⚠️' },
+      { id: 'approvals', label: 'Approvals', icon: '📋', badge: pendingCount },
+      { id: 'students', label: 'Students', icon: '🎓' },
+      { id: 'trainers', label: 'Trainers', icon: '👨‍🏫' },
+      { id: 'timetable', label: 'Timetable', icon: '📅' },
+      { id: 'audit', label: 'Audit log', icon: '📜' },
+    ],
+    counselor: [
+      { id: 'home', label: 'Home', icon: '🏠' },
+      { id: 'copilot', label: 'Copilot', icon: '🤖' },
+      { id: 'at-risk', label: 'At-risk students', icon: '⚠️' },
+      { id: 'approvals', label: 'Approvals', icon: '📋', badge: pendingCount },
+      { id: 'students', label: 'Students', icon: '🎓' },
+      { id: 'timetable', label: 'Timetable', icon: '📅' },
+    ],
+    trainer: [
+      { id: 'home', label: 'Home', icon: '🏠' },
+      { id: 'copilot', label: 'Copilot', icon: '🤖' },
+      { id: 'at-risk', label: 'At-risk students', icon: '⚠️' },
+      { id: 'timetable', label: 'Timetable', icon: '📅' },
+    ],
+    accounts: [
+      { id: 'home', label: 'Home', icon: '🏠' },
+      { id: 'copilot', label: 'Copilot', icon: '🤖' },
+      { id: 'approvals', label: 'Approvals', icon: '📋', badge: pendingCount },
+    ],
+  };
 
-  const visibleItems = menuItems.filter((item) => item.roles.includes(role));
-
-  const roleBadgeClass = `badge badge-role-${role}`;
+  const visibleItems = menuConfig[role] || menuConfig.owner;
+  const initial = (user?.username || 'U')[0].toUpperCase();
 
   return (
-    <aside className={`sidebar ${isMobileOpen ? 'mobile-open' : ''}`}>
+    <aside className={`sidebar dark-sidebar ${isMobileOpen ? 'mobile-open' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-brand">
         <div className="brand-title">
           <span>🏫</span>
           <span>Ops Copilot</span>
         </div>
-        <div className="brand-tag">Institute Admin & Operations</div>
+        <div className="brand-tag">Institute Operations</div>
       </div>
 
       {/* Navigation Links */}
@@ -52,19 +74,10 @@ export const Sidebar = ({
             >
               <div className="nav-item-left">
                 <span className="nav-icon">{item.icon}</span>
-                <span>{item.label}</span>
+                <span className="nav-label">{item.label}</span>
               </div>
-              {item.badge > 0 && (
-                <span
-                  style={{
-                    backgroundColor: 'var(--danger)',
-                    color: '#fff',
-                    borderRadius: '10px',
-                    padding: '2px 7px',
-                    fontSize: '0.72rem',
-                    fontWeight: '700',
-                  }}
-                >
+              {item.id === 'approvals' && item.badge > 0 && (
+                <span className="badge-pending-count">
                   {item.badge}
                 </span>
               )}
@@ -76,9 +89,12 @@ export const Sidebar = ({
       {/* Footer Profile & Logout */}
       <div className="sidebar-footer">
         <div className="user-profile">
-          <div>
+          <div className="user-avatar-circle">
+            {initial}
+          </div>
+          <div className="user-info-text">
             <div className="user-name">{user?.username}</div>
-            <span className={roleBadgeClass} style={{ textTransform: 'capitalize', marginTop: '2px' }}>
+            <span className={`role-badge role-${role}`}>
               {role}
             </span>
           </div>
@@ -86,12 +102,12 @@ export const Sidebar = ({
 
         <button
           type="button"
-          className="btn btn-secondary btn-sm"
-          style={{ width: '100%', justifyContent: 'center' }}
+          className="btn-logout"
           onClick={onLogout}
+          title="Sign out of your session"
         >
           <span>🚪</span>
-          <span>Log out</span>
+          <span>Logout</span>
         </button>
       </div>
     </aside>

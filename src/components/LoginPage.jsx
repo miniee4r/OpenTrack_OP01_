@@ -8,10 +8,10 @@ export const LoginPage = ({ onLoginSuccess }) => {
   const [errorMessage, setErrorMessage] = useState('');
 
   const demoAccounts = [
-    { label: '👑 Owner', user: 'owner', pass: 'owner123' },
-    { label: '🤝 Counselor', user: 'counselor', pass: 'c123' },
-    { label: '👨‍🏫 Trainer', user: 'trainer', pass: 't123' },
-    { label: '💰 Accounts', user: 'accounts', pass: 'a123' },
+    { label: '👑 Owner', user: 'owner', pass: 'Inst@Owner2026', desc: 'Full administration & master schedule' },
+    { label: '🤝 Counselor', user: 'counselor', pass: 'Inst@Couns2026', desc: 'Student retention & EMI support' },
+    { label: '👨‍🏫 Trainer', user: 'trainer', pass: 'Inst@Train2026', desc: 'Batches, attendance & time off' },
+    { label: '💰 Accounts', user: 'accounts', pass: 'Inst@Accts2026', desc: 'Fee collections, waivers & reminders' },
   ];
 
   const handleFillDemo = (user, pass) => {
@@ -45,130 +45,133 @@ export const LoginPage = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'var(--bg-page)',
-      padding: '20px',
-    }}>
-      <div style={{
-        maxWidth: '440px',
-        width: '100%',
-        backgroundColor: 'var(--bg-card)',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-lg)',
-        border: '1px solid var(--border-color)',
-        padding: '36px 32px',
-      }}>
-        {/* App Title & Description */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{
-            fontSize: '2.2rem',
-            marginBottom: '8px',
-          }}>
-            🏫
+    <div className="login-page-wrapper">
+      <div className="login-split-container">
+        {/* Left Side: Indigo-to-Violet Gradient Branding Panel */}
+        <div className="login-brand-panel">
+          <div className="login-brand-content">
+            <div className="login-brand-badge">
+              <span>🏫</span>
+              <span>Operations Intelligence</span>
+            </div>
+            <h1 className="login-brand-title">Institute Operations Copilot</h1>
+            <p className="login-brand-tagline">
+              Spot problems before they become dropouts.
+            </p>
+
+            <div className="login-features-list">
+              <div className="login-feature-item">
+                <div className="login-feature-icon">🔍</div>
+                <div>
+                  <div className="login-feature-heading">Proactive Risk Detection</div>
+                  <div className="login-feature-sub">Identify consecutive absences and EMI payment delays before dropouts happen.</div>
+                </div>
+              </div>
+
+              <div className="login-feature-item">
+                <div className="login-feature-icon">🛡️</div>
+                <div>
+                  <div className="login-feature-heading">Enforced Role Permissions</div>
+                  <div className="login-feature-sub">Database engine authorizers guarantee strict privacy across roles.</div>
+                </div>
+              </div>
+
+              <div className="login-feature-item">
+                <div className="login-feature-icon">⚡</div>
+                <div>
+                  <div className="login-feature-heading">Human-in-the-Loop Actions</div>
+                  <div className="login-feature-sub">Drafted WhatsApp reminders and schedule changes execute only with human sign-off.</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 style={{
-            fontSize: '1.4rem',
-            fontWeight: '700',
-            color: 'var(--text-main)',
-            letterSpacing: '-0.02em',
-          }}>
-            Institute Operations Copilot
-          </h1>
-          <p style={{
-            fontSize: '0.85rem',
-            color: 'var(--text-muted)',
-            marginTop: '6px',
-            lineHeight: '1.4',
-          }}>
-            Role-based administration with read-only AI verified operations.
-          </p>
         </div>
 
-        {/* Error Alert */}
-        {errorMessage && (
-          <div className="error-box">
-            <span>⚠️</span>
-            <span>{errorMessage}</span>
-          </div>
-        )}
+        {/* Right Side: Form Card with Demo Account Chips */}
+        <div className="login-form-panel">
+          <div className="login-card">
+            <div className="login-card-header">
+              <h2 className="login-card-title">Sign In</h2>
+              <p className="login-card-subtitle">
+                Access your role-specific dashboard and AI workspace.
+              </p>
+            </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="username">Username</label>
-            <input
-              id="username"
-              type="text"
-              className="input-text"
-              placeholder="e.g. counselor"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={isLoading}
-              autoComplete="username"
-            />
-          </div>
+            {errorMessage && (
+              <div className="error-box" role="alert" style={{ marginBottom: '16px' }}>
+                <span>⚠️</span>
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              className="input-text"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-              autoComplete="current-password"
-            />
-          </div>
+            <form onSubmit={handleSubmit} autoComplete="off">
+              <div className="form-group">
+                <label className="form-label" htmlFor="inst-user">Username</label>
+                <input
+                  id="inst-user"
+                  name="inst-user"
+                  type="text"
+                  className="input-text"
+                  placeholder="e.g. owner or counselor"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={isLoading}
+                  autoComplete="off"
+                  data-lpignore="true"
+                  required
+                />
+              </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '10px 16px', fontSize: '0.92rem', marginTop: '6px' }}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
+              <div className="form-group">
+                <label className="form-label" htmlFor="inst-pass">Password</label>
+                <input
+                  id="inst-pass"
+                  name="inst-pass"
+                  type="password"
+                  className="input-text"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  required
+                />
+              </div>
 
-        {/* Demo Accounts Box */}
-        <div style={{
-          marginTop: '28px',
-          paddingTop: '20px',
-          borderTop: '1px solid var(--border-light)',
-        }}>
-          <div style={{
-            fontSize: '0.78rem',
-            fontWeight: '600',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            marginBottom: '10px',
-            textAlign: 'center',
-          }}>
-            Quick Demo Accounts
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {demoAccounts.map((account) => (
               <button
-                key={account.user}
-                type="button"
-                className="chip"
-                onClick={() => handleFillDemo(account.user, account.pass)}
-                style={{
-                  justifyContent: 'center',
-                  padding: '7px 8px',
-                  fontSize: '0.78rem',
-                }}
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: '100%', marginTop: '8px', padding: '12px' }}
+                disabled={isLoading}
               >
-                <span>{account.label}</span>
+                {isLoading ? 'Signing in...' : 'Sign In →'}
               </button>
-            ))}
+            </form>
+
+            {/* Quick Demo Credentials Selection */}
+            <div className="demo-accounts-section">
+              <div className="demo-section-label">Demo accounts (click to test role):</div>
+              <div className="demo-chips-grid">
+                {demoAccounts.map((account) => {
+                  const isSelected = username === account.user;
+                  return (
+                    <button
+                      key={account.user}
+                      type="button"
+                      className={`demo-chip-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => handleFillDemo(account.user, account.pass)}
+                    >
+                      <div className="demo-chip-top">
+                        <span className="demo-chip-label">{account.label}</span>
+                        <span className="demo-chip-role">{account.user}</span>
+                      </div>
+                      <div className="demo-chip-desc">{account.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
