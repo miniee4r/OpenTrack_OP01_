@@ -5,7 +5,7 @@
  * Automatic Bearer header injection and 401 Unauthorized handling.
  */
 
-export const BACKEND_URL = "http://localhost:8000";
+export const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
 
 let authToken = "";
 let unauthorizedHandler = null;
