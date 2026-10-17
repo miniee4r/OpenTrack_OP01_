@@ -53,6 +53,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    return {
+        "status": "healthy",
+        "message": "Institute Operations Copilot Backend API is running successfully.",
+        "docs": "/docs"
+    }
+
+
+
 # ==============================================================================
 # AUDIT LOGGER HELPER
 # ==============================================================================
