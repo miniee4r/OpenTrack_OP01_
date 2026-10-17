@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Institute Operations Copilot - Modern, Light & Friendly Design System
+   Institute Operations Copilot - Executive Professional Design System
    ========================================================================== */
 
 :root {
@@ -9,42 +9,42 @@
   --border-color: #E2E8F0;
   --border-light: #F1F5F9;
 
-  /* Indigo-to-Violet Primary */
-  --primary: #4F46E5;
-  --primary-hover: #4338CA;
-  --primary-gradient: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-  --primary-light: #EEF2FF;
-  --primary-text: #3730A3;
+  /* Executive Corporate Navy & Sapphire Primary */
+  --primary: #1E40AF;
+  --primary-hover: #1D4ED8;
+  --primary-gradient: linear-gradient(135deg, #0F172A 0%, #1E3A8A 60%, #2563EB 100%);
+  --primary-light: #EFF6FF;
+  --primary-text: #1E40AF;
 
-  /* Dark Navy Sidebar */
-  --sidebar-bg: #0F172A;
+  /* Deep Executive Obsidian-Slate Sidebar */
+  --sidebar-bg: #0B0F19;
   --sidebar-border: #1E293B;
-  --sidebar-text: #94A3B8;
+  --sidebar-text: #8B9BB4;
   --sidebar-text-active: #FFFFFF;
 
-  /* Semantic Alerts */
-  --success: #10B981;
+  /* Semantic Alerts - Refined Executive Palette */
+  --success: #059669;
   --success-light: #ECFDF5;
   --success-text: #065F46;
   --success-border: #A7F3D0;
 
-  --danger: #EF4444;
+  --danger: #DC2626;
   --danger-light: #FEF2F2;
   --danger-text: #991B1B;
   --danger-border: #FECACA;
 
-  --warning: #F59E0B;
+  --warning: #D97706;
   --warning-light: #FFFBEB;
   --warning-text: #92400E;
   --warning-border: #FDE68A;
 
-  --info: #3B82F6;
-  --info-light: #EFF6FF;
-  --info-text: #1E40AF;
-  --info-border: #BFDBFE;
+  --info: #0284C7;
+  --info-light: #F0F9FF;
+  --info-text: #0369A1;
+  --info-border: #BAE6FD;
 
   --text-main: #0F172A;
-  --text-muted: #64748B;
+  --text-muted: #475569;
   --text-light: #94A3B8;
 
   /* Radii */
@@ -53,10 +53,10 @@
   --radius-lg: 14px;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  /* Shadows - Crisp, subtle executive elevation */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -1px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
 
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --transition-fast: all 150ms ease-in-out;
@@ -135,7 +135,7 @@ body {
 
 .login-brand-tagline {
   font-size: 16px;
-  color: #E0E7FF;
+  color: #E2E8F0;
   margin-bottom: 32px;
   line-height: 1.4;
 }
@@ -172,7 +172,7 @@ body {
 
 .login-feature-sub {
   font-size: 12px;
-  color: #C7D2FE;
+  color: #CBD5E1;
   line-height: 1.4;
 }
 
@@ -356,7 +356,7 @@ body {
   background: var(--primary-gradient);
   color: #FFFFFF;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
 }
 
 .nav-item-left {
@@ -435,8 +435,8 @@ body {
 }
 
 .role-counselor {
-  background: #E0E7FF;
-  color: #3730A3;
+  background: #EFF6FF;
+  color: #1E40AF;
 }
 
 .role-trainer {
@@ -698,13 +698,13 @@ body {
   background: var(--primary-gradient);
   color: #FFFFFF;
   border: none;
-  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 2px 4px rgba(30, 58, 138, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
   opacity: 0.94;
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 4px 8px rgba(30, 58, 138, 0.3);
 }
 
 .btn-secondary {
@@ -759,8 +759,8 @@ body {
 }
 
 .badge-role-counselor {
-  background-color: #EEF2FF;
-  color: #3730A3;
+  background-color: #EFF6FF;
+  color: #1E40AF;
 }
 
 .badge-role-trainer {
@@ -804,7 +804,7 @@ body {
 
 .input-text:focus, .select-control:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 .chip {

@@ -47,7 +47,7 @@ export const LoginPage = ({ onLoginSuccess }) => {
   return (
     <div className="login-page-wrapper">
       <div className="login-split-container">
-        {/* Left Side: Indigo-to-Violet Gradient Branding Panel */}
+        {/* Left Side: Corporate Navy Gradient Branding Panel */}
         <div className="login-brand-panel">
           <div className="login-brand-content">
             <div className="login-brand-badge">

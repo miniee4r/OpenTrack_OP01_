@@ -87,7 +87,7 @@ export const TimetablePage = ({ user, onNavigateToPage }) => {
       return { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0' }; // Soft Green
     }
     if (batchName.includes('Web')) {
-      return { bg: '#F5F3FF', text: '#5B21B6', border: '#DDD6FE' }; // Soft Violet
+      return { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' }; // Soft Teal
     }
     if (batchName.includes('Data Science')) {
       return { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A' }; // Soft Amber
